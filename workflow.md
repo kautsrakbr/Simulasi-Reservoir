@@ -76,9 +76,8 @@ Supaya jelas dari awal, dokumen ini saya susun dengan tiga level kepastian:
 
 - `persis sesuai kode VBA`: rumus atau alur yang memang ditulis langsung di workbook.
 - `interpretasi konsep dari kode`: penjelasan fisik dari rumus yang ada di workbook.
-- `catatan kemungkinan typo / belum final`: bagian yang terlihat masih latihan, placeholder, atau belum sepenuhnya rapi di VBA.
-
-Bagian yang sudah saya cocokkan langsung terhadap source:
+- `catatan kemungkinan typo / belum final`: bagian yang terlihat masih m 
+ aBagian yang sudah saya cocokkan langsung terhadap source:
 
 ### 0.2 Yang Sudah Dicocokkan Langsung
 
@@ -205,12 +204,20 @@ Bagian ini dibuat sebagai "kamus cepat" untuk rumus-rumus penting yang muncul di
 - `gunanya`: rumus ini dipakai untuk apa
 - `cara pakai`: input apa yang harus tersedia sebelum rumus dipakai
 - `hasil/fungsi`: output rumus ini nantinya dipakai untuk apa lagi
+- `keterangan variabel`: arti setiap simbol yang muncul langsung di bawah rumusnya
 
 ### 2B.1 Jumlah grid
 
 $$
 ngrid = nx \times ny \times nz
 $$
+
+Keterangan variabel:
+
+- `ngrid`: jumlah total cell pada model.
+- `nx`: jumlah cell arah `x`.
+- `ny`: jumlah cell arah `y`.
+- `nz`: jumlah cell arah `z`.
 
 Gunanya:
 
@@ -230,6 +237,13 @@ Hasil/fungsi:
 $$
 V_b = dx_i \times dy_j \times dz_k
 $$
+
+Keterangan variabel:
+
+- `V_b`: bulk volume atau volume total batuan pada satu cell.
+- `dx_i`: panjang cell pada arah `x` untuk indeks `i`.
+- `dy_j`: lebar cell pada arah `y` untuk indeks `j`.
+- `dz_k`: tebal cell pada arah `z` untuk indeks `k`.
 
 Gunanya:
 
@@ -251,6 +265,19 @@ $$
 Y(p) = Y_i + \frac{Y_i - Y_{i+1}}{p_i - p_{i+1}} (p - p_i)
 $$
 
+Keterangan variabel:
+
+- `Y(p)`: nilai properti fluida pada tekanan `p` yang sedang dicari.
+- `Y_i`: nilai properti pada titik tabel ke-`i`.
+- `Y_{i+1}`: nilai properti pada titik tabel ke-`i+1`.
+- `p`: tekanan target yang ingin dievaluasi.
+- `p_i`: tekanan pada titik tabel ke-`i`.
+- `p_{i+1}`: tekanan pada titik tabel ke-`i+1`.
+
+Catatan:
+
+- `Y` bisa berarti `Bo`, `Bw`, `Bg`, `mo`, `mw`, `mg`, `Rso`, atau `Rsw`.
+
 Gunanya:
 
 - mencari nilai properti fluida pada tekanan tertentu saat nilai itu tidak persis ada di tabel.
@@ -270,13 +297,35 @@ $$
 \rho_w = \frac{\rho_{w,ref}}{B_w}
 $$
 
+Keterangan variabel:
+
+- `\rho_w`: densitas air pada kondisi reservoir.
+- `\rho_{w,ref}`: densitas air pada kondisi referensi atau permukaan.
+- `B_w`: water formation volume factor.
+
 $$
 \rho_g = \frac{\rho_{g,ref}}{B_g}
 $$
 
+Keterangan variabel:
+
+- `\rho_g`: densitas gas pada kondisi reservoir.
+- `\rho_{g,ref}`: densitas gas pada kondisi referensi atau permukaan.
+- `B_g`: gas formation volume factor.
+
 $$
 \rho_o \approx \frac{\rho_{o,ref} + R_{so}\rho_{g,ref} + R_{sw}\rho_{w,ref}}{B_o}
 $$
+
+Keterangan variabel:
+
+- `\rho_o`: densitas oil pada kondisi reservoir.
+- `\rho_{o,ref}`: densitas oil pada kondisi referensi atau permukaan.
+- `R_{so}`: gas yang terlarut di oil.
+- `\rho_{g,ref}`: densitas gas pada kondisi referensi.
+- `R_{sw}`: gas atau komponen terlarut yang diasosiasikan dengan water dalam model workbook.
+- `\rho_{w,ref}`: densitas water pada kondisi referensi.
+- `B_o`: oil formation volume factor.
 
 Gunanya:
 
@@ -298,13 +347,34 @@ $$
 C_o = \frac{C_{o,ref}}{1 + C_{o,ref}(p - p_{ref})}
 $$
 
+Keterangan variabel:
+
+- `C_o`: kompresibilitas oil pada tekanan `p`.
+- `C_{o,ref}`: kompresibilitas oil pada tekanan referensi.
+- `p`: tekanan yang sedang dievaluasi.
+- `p_{ref}`: tekanan referensi.
+
 $$
 C_w = \frac{C_{w,ref}}{1 + C_{w,ref}(p - p_{ref})}
 $$
 
+Keterangan variabel:
+
+- `C_w`: kompresibilitas water pada tekanan `p`.
+- `C_{w,ref}`: kompresibilitas water pada tekanan referensi.
+- `p`: tekanan yang sedang dievaluasi.
+- `p_{ref}`: tekanan referensi.
+
 $$
 C_g = \frac{C_{g,ref}}{1 + C_{g,ref}(p - p_{ref})}
 $$
+
+Keterangan variabel:
+
+- `C_g`: kompresibilitas gas pada tekanan `p`.
+- `C_{g,ref}`: kompresibilitas gas pada tekanan referensi.
+- `p`: tekanan yang sedang dievaluasi.
+- `p_{ref}`: tekanan referensi.
 
 Gunanya:
 
@@ -326,6 +396,15 @@ $$
 p_{init,i} = p_{init,ref} + \rho_o \frac{(depth_i - d_{ref})}{144}
 $$
 
+Keterangan variabel:
+
+- `p_{init,i}`: tekanan awal cell ke-`i`.
+- `p_{init,ref}`: tekanan awal referensi.
+- `\rho_o`: densitas oil yang dipakai untuk gradien hidrostatik awal.
+- `depth_i`: kedalaman cell ke-`i`.
+- `d_{ref}`: kedalaman referensi.
+- `144`: faktor konversi unit yang dipakai pada formulasi workbook.
+
 Gunanya:
 
 - membentuk distribusi tekanan awal berdasarkan kedalaman.
@@ -343,6 +422,12 @@ Hasil/fungsi:
 $$
 k_{harm,ij} = \frac{2k_i k_j}{k_i + k_j}
 $$
+
+Keterangan variabel:
+
+- `k_{harm,ij}`: permeabilitas efektif pada interface antara cell `i` dan `j`.
+- `k_i`: permeabilitas cell `i` pada arah koneksi.
+- `k_j`: permeabilitas cell `j` pada arah koneksi.
 
 Gunanya:
 
@@ -362,6 +447,15 @@ Hasil/fungsi:
 $$
 T_{ij} = 0.00603 \times \frac{2 k_i k_j}{k_i + k_j} \times \frac{A_{ij}}{L_{ij}}
 $$
+
+Keterangan variabel:
+
+- `T_{ij}`: transmissibility antara cell `i` dan `j`.
+- `0.00603`: faktor konversi unit lapangan yang dipakai workbook.
+- `k_i`: permeabilitas cell `i` pada arah koneksi.
+- `k_j`: permeabilitas cell `j` pada arah koneksi.
+- `A_{ij}`: luas bidang kontak antara cell `i` dan `j`.
+- `L_{ij}`: jarak karakteristik atau jarak pusat-ke-pusat antara cell `i` dan `j`.
 
 Gunanya:
 
@@ -383,6 +477,13 @@ $$
 \lambda_p = \frac{k_{rp}}{\mu_p B_p}
 $$
 
+Keterangan variabel:
+
+- `\lambda_p`: mobility phase `p`.
+- `k_{rp}`: relative permeability phase `p`.
+- `\mu_p`: viskositas phase `p`.
+- `B_p`: formation volume factor phase `p`.
+
 Gunanya:
 
 - mengukur kemampuan phase tertentu untuk bergerak melalui batuan.
@@ -401,13 +502,47 @@ $$
 \Delta \Phi_o = p_j - p_i - \frac{\rho_{o,j} + \rho_{o,i}}{2} \frac{\Delta z}{144}
 $$
 
+Keterangan variabel:
+
+- `\Delta \Phi_o`: beda potential oil antara cell `i` dan `j`.
+- `p_i`: tekanan cell `i`.
+- `p_j`: tekanan cell `j`.
+- `\rho_{o,i}`: densitas oil di cell `i`.
+- `\rho_{o,j}`: densitas oil di cell `j`.
+- `\Delta z`: beda kedalaman antara dua cell.
+- `144`: faktor konversi unit.
+
 $$
 \Delta \Phi_w = p_j - p_i - \frac{\rho_{w,j} + \rho_{w,i}}{2} \frac{\Delta z}{144} - (Pcow_j - Pcow_i)
 $$
 
+Keterangan variabel:
+
+- `\Delta \Phi_w`: beda potential water antara cell `i` dan `j`.
+- `p_i`: tekanan cell `i`.
+- `p_j`: tekanan cell `j`.
+- `\rho_{w,i}`: densitas water di cell `i`.
+- `\rho_{w,j}`: densitas water di cell `j`.
+- `\Delta z`: beda kedalaman antara dua cell.
+- `Pcow_i`: capillary pressure oil-water di cell `i`.
+- `Pcow_j`: capillary pressure oil-water di cell `j`.
+- `144`: faktor konversi unit.
+
 $$
 \Delta \Phi_g = p_j - p_i - \frac{\rho_{g,j} + \rho_{g,i}}{2} \frac{\Delta z}{144} + (Pcgw_j - Pcgw_i)
 $$
+
+Keterangan variabel:
+
+- `\Delta \Phi_g`: beda potential gas antara cell `i` dan `j`.
+- `p_i`: tekanan cell `i`.
+- `p_j`: tekanan cell `j`.
+- `\rho_{g,i}`: densitas gas di cell `i`.
+- `\rho_{g,j}`: densitas gas di cell `j`.
+- `\Delta z`: beda kedalaman antara dua cell.
+- `Pcgw_i`: capillary pressure gas-water di cell `i`.
+- `Pcgw_j`: capillary pressure gas-water di cell `j`.
+- `144`: faktor konversi unit.
 
 Gunanya:
 
@@ -428,13 +563,40 @@ $$
 F_o = T_{ij} \times \frac{k_{ro,up}}{\mu_{o,up}} \times \frac{\Delta \Phi_o}{\overline{B_o}}
 $$
 
+Keterangan variabel:
+
+- `F_o`: flux oil pada koneksi `i-j`.
+- `T_{ij}`: transmissibility koneksi `i-j`.
+- `k_{ro,up}`: relative permeability oil dari sisi upstream.
+- `\mu_{o,up}`: viskositas oil dari sisi upstream.
+- `\Delta \Phi_o`: beda potential oil.
+- `\overline{B_o}`: rata-rata oil formation volume factor antara dua cell.
+
 $$
 F_w = T_{ij} \times \frac{k_{rw,up}}{\mu_{w,up}} \times \frac{\Delta \Phi_w}{\overline{B_w}}
 $$
 
+Keterangan variabel:
+
+- `F_w`: flux water pada koneksi `i-j`.
+- `T_{ij}`: transmissibility koneksi `i-j`.
+- `k_{rw,up}`: relative permeability water dari sisi upstream.
+- `\mu_{w,up}`: viskositas water dari sisi upstream.
+- `\Delta \Phi_w`: beda potential water.
+- `\overline{B_w}`: rata-rata water formation volume factor antara dua cell.
+
 $$
 F_g = T_{ij} \times \frac{k_{rg,up}}{\mu_{g,up}} \times \frac{\Delta \Phi_g}{\overline{B_g}}
 $$
+
+Keterangan variabel:
+
+- `F_g`: flux gas pada koneksi `i-j`.
+- `T_{ij}`: transmissibility koneksi `i-j`.
+- `k_{rg,up}`: relative permeability gas dari sisi upstream.
+- `\mu_{g,up}`: viskositas gas dari sisi upstream.
+- `\Delta \Phi_g`: beda potential gas.
+- `\overline{B_g}`: rata-rata gas formation volume factor antara dua cell.
 
 Gunanya:
 
@@ -455,6 +617,15 @@ $$
 V_{pore}^k = V_b \phi \left(1 + c_{rock}(p^k - p_{ref})\right)
 $$
 
+Keterangan variabel:
+
+- `V_{pore}^k`: pore volume efektif pada iterasi `k`.
+- `V_b`: bulk volume cell.
+- `\phi`: porositas batuan.
+- `c_{rock}`: kompresibilitas batuan.
+- `p^k`: tekanan cell pada iterasi `k`.
+- `p_{ref}`: tekanan referensi batuan.
+
 Gunanya:
 
 - menghitung volume pori aktual pada iterasi tertentu, dengan efek kompresibilitas batuan.
@@ -473,9 +644,31 @@ $$
 Acc_o = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_o^k}{B_o^k} - \frac{V_{pore}^n S_o^n}{B_o^n}\right)
 $$
 
+Keterangan variabel:
+
+- `Acc_o`: accumulation oil.
+- `\Delta t`: ukuran time step.
+- `V_{pore}^k`: pore volume pada iterasi `k`.
+- `S_o^k`: saturasi oil pada iterasi `k`.
+- `B_o^k`: oil formation volume factor pada iterasi `k`.
+- `V_{pore}^n`: pore volume pada awal time step lama.
+- `S_o^n`: saturasi oil pada awal time step lama.
+- `B_o^n`: oil formation volume factor pada awal time step lama.
+
 $$
 Acc_w = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_w^k}{B_w^k} - \frac{V_{pore}^n S_w^n}{B_w^n}\right)
 $$
+
+Keterangan variabel:
+
+- `Acc_w`: accumulation water.
+- `\Delta t`: ukuran time step.
+- `V_{pore}^k`: pore volume pada iterasi `k`.
+- `S_w^k`: saturasi water pada iterasi `k`.
+- `B_w^k`: water formation volume factor pada iterasi `k`.
+- `V_{pore}^n`: pore volume pada awal time step lama.
+- `S_w^n`: saturasi water pada awal time step lama.
+- `B_w^n`: water formation volume factor pada awal time step lama.
 
 Gunanya:
 
@@ -494,6 +687,21 @@ Hasil/fungsi:
 $$
 Acc_g = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_g^k}{B_g^k} - \frac{V_{pore}^n S_g^n}{B_*^n}\right) + R_{so}^k Acc_o + R_{sw}^k Acc_w
 $$
+
+Keterangan variabel:
+
+- `Acc_g`: accumulation gas.
+- `\Delta t`: ukuran time step.
+- `V_{pore}^k`: pore volume pada iterasi `k`.
+- `S_g^k`: saturasi gas pada iterasi `k`.
+- `B_g^k`: gas formation volume factor pada iterasi `k`.
+- `V_{pore}^n`: pore volume pada awal time step lama.
+- `S_g^n`: saturasi gas pada awal time step lama.
+- `B_*^n`: faktor volume formasi gas state lama seperti yang tertulis di workbook, walaupun ada indikasi belum rapi.
+- `R_{so}^k`: solution gas-oil ratio pada iterasi `k`.
+- `Acc_o`: accumulation oil.
+- `R_{sw}^k`: coupling ratio terkait water pada iterasi `k`.
+- `Acc_w`: accumulation water.
 
 Gunanya:
 
@@ -515,6 +723,14 @@ $$
 R_{p,i} = Acc_{p,i} + \sum_{j \in N(i)} F_{p,ij} - q_{p,i}
 $$
 
+Keterangan variabel:
+
+- `R_{p,i}`: residual phase `p` di cell `i`.
+- `Acc_{p,i}`: accumulation phase `p` di cell `i`.
+- `\sum_{j \in N(i)} F_{p,ij}`: jumlah flux phase `p` dari semua tetangga `j` yang terkoneksi ke cell `i`.
+- `N(i)`: himpunan atau daftar tetangga cell `i`.
+- `q_{p,i}`: source/sink phase `p` di cell `i`, misalnya dari well.
+
 Gunanya:
 
 - mengukur apakah neraca massa phase pada cell itu sudah balance atau belum.
@@ -533,13 +749,31 @@ $$
 R_o = NetFlux_o - Acc_o
 $$
 
+Keterangan variabel:
+
+- `R_o`: residual oil.
+- `NetFlux_o`: jumlah flux oil dari semua koneksi pada cell itu.
+- `Acc_o`: accumulation oil.
+
 $$
 R_w = NetFlux_w - Acc_w
 $$
 
+Keterangan variabel:
+
+- `R_w`: residual water.
+- `NetFlux_w`: jumlah flux water dari semua koneksi pada cell itu.
+- `Acc_w`: accumulation water.
+
 $$
 R_g = NetFlux_g - Acc_g
 $$
+
+Keterangan variabel:
+
+- `R_g`: residual gas.
+- `NetFlux_g`: jumlah flux gas dari semua koneksi pada cell itu.
+- `Acc_g`: accumulation gas.
 
 Gunanya:
 
@@ -560,6 +794,15 @@ $$
 ResidErr = \max \left(|R_o|, |R_w|, |R_g|\right) \text{ untuk semua cell}
 $$
 
+Keterangan variabel:
+
+- `ResidErr`: residual error maksimum seluruh model.
+- `R_o`: residual oil.
+- `R_w`: residual water.
+- `R_g`: residual gas.
+- `|.|`: nilai absolut.
+- `\max`: ambil nilai terbesar.
+
 Gunanya:
 
 - mengukur error terburuk di seluruh model.
@@ -578,6 +821,16 @@ $$
 nnz = \sum_{i=1}^{ngrid} 9(1 + nCon_i)
 $$
 
+Keterangan variabel:
+
+- `nnz`: jumlah elemen non-zero pada matriks Jacobian sparse.
+- `\sum`: penjumlahan untuk semua cell.
+- `i`: indeks cell.
+- `ngrid`: jumlah total cell model.
+- `9`: ukuran blok lokal `3 x 3` untuk tiga residual terhadap tiga unknown.
+- `nCon_i`: jumlah koneksi cell ke-`i`.
+- `1 + nCon_i`: satu blok untuk cell sendiri ditambah blok untuk semua tetangga yang terkoneksi.
+
 Gunanya:
 
 - menghitung berapa banyak elemen Jacobian sparse yang perlu disiapkan.
@@ -595,6 +848,14 @@ Hasil/fungsi:
 $$
 \frac{\partial R}{\partial p} \approx \frac{R^{base} - R^{perturbed}}{\Delta p}
 $$
+
+Keterangan variabel:
+
+- `\partial R / \partial p`: turunan parsial residual terhadap pressure.
+- `R^{base}`: residual sebelum pressure diperturbasi.
+- `R^{perturbed}`: residual setelah pressure diperturbasi.
+- `\Delta p`: besar perturbasi pressure.
+- `\approx`: dihitung secara numerik sebagai pendekatan, bukan turunan analitik exact.
 
 Gunanya:
 
@@ -617,9 +878,23 @@ $$
 \frac{\partial R}{\partial S_w} \approx \frac{R^{perturbed} - R^{base}}{\Delta S_w}
 $$
 
+Keterangan variabel:
+
+- `\partial R / \partial S_w`: turunan parsial residual terhadap saturasi water.
+- `R^{perturbed}`: residual setelah `S_w` diperturbasi.
+- `R^{base}`: residual sebelum perturbasi.
+- `\Delta S_w`: besar perturbasi saturasi water.
+
 $$
 \frac{\partial R}{\partial S_g} \approx \frac{R^{perturbed} - R^{base}}{\Delta S_g}
 $$
+
+Keterangan variabel:
+
+- `\partial R / \partial S_g`: turunan parsial residual terhadap saturasi gas.
+- `R^{perturbed}`: residual setelah `S_g` diperturbasi.
+- `R^{base}`: residual sebelum perturbasi.
+- `\Delta S_g`: besar perturbasi saturasi gas.
 
 Gunanya:
 
@@ -641,6 +916,13 @@ $$
 J \Delta m = -R
 $$
 
+Keterangan variabel:
+
+- `J`: matriks Jacobian.
+- `\Delta m`: vektor koreksi unknown.
+- `R`: vektor residual.
+- `-R`: right-hand side sistem Newton.
+
 Gunanya:
 
 - mencari koreksi state yang membuat residual turun.
@@ -661,17 +943,42 @@ $$
 p^{k+1} = p^k + \Delta p
 $$
 
+Keterangan variabel:
+
+- `p^{k+1}`: pressure baru setelah update.
+- `p^k`: pressure lama pada iterasi sekarang.
+- `\Delta p`: koreksi pressure dari solver Newton.
+
 $$
 S_w^{k+1} = S_w^k + \Delta S_w
 $$
+
+Keterangan variabel:
+
+- `S_w^{k+1}`: saturasi water baru.
+- `S_w^k`: saturasi water lama.
+- `\Delta S_w`: koreksi saturasi water.
 
 $$
 S_g^{k+1} = S_g^k + \Delta S_g
 $$
 
+Keterangan variabel:
+
+- `S_g^{k+1}`: saturasi gas baru.
+- `S_g^k`: saturasi gas lama.
+- `\Delta S_g`: koreksi saturasi gas.
+
 $$
 S_o^{k+1} = 1 - S_w^{k+1} - S_g^{k+1}
 $$
+
+Keterangan variabel:
+
+- `S_o^{k+1}`: saturasi oil baru.
+- `1`: total saturasi seluruh phase dalam satu cell.
+- `S_w^{k+1}`: saturasi water baru.
+- `S_g^{k+1}`: saturasi gas baru.
 
 Gunanya:
 
