@@ -1,0 +1,10 @@
+name: pyqt-app
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pyqt=5.15
+  - pip
+  - pip:
+      - requests
+      - pandas
