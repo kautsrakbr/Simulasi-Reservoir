@@ -1331,9 +1331,7 @@ dengan:
 Untuk aliran per fasa, biasanya dipakai transmissibility fasa atau flux coefficient:
 
 $$
-\lambda_{p,ij} T_{ij}
-=
-\frac{k_{rp,ij}}{\mu_{p,ij} B_{p,ij}} T_{ij}
+\lambda_{p,ij} T_{ij} = \frac{k_{rp,ij}}{\mu_{p,ij} B_{p,ij}} T_{ij}
 $$
 
 dengan:
@@ -1560,11 +1558,7 @@ $$
 Walaupun OCR slide tidak menangkap semua simbol dengan rapi, bentuk umum residual per fasa dapat dipahami sebagai:
 
 $$
-R_{p,i}
-=
-\frac{\left( V_{pore,i} \frac{S_{p,i}}{B_{p,i}} \right)^{n+1} - \left( V_{pore,i} \frac{S_{p,i}}{B_{p,i}} \right)^n}{\Delta t}
-+ \sum_{j \in N(i)} F_{p,ij}^{n+1}
-- q_{p,i}^{n+1}
+R_{p,i} = \frac{\left( V_{pore,i} \frac{S_{p,i}}{B_{p,i}} \right)^{n+1} - \left( V_{pore,i} \frac{S_{p,i}}{B_{p,i}} \right)^n}{\Delta t} + \sum_{j \in N(i)} F_{p,ij}^{n+1} - q_{p,i}^{n+1}
 $$
 
 dengan:
@@ -2262,23 +2256,7 @@ $$
 atau secara komponen:
 
 $$
-\begin{bmatrix}
-p \\
-S_w \\
-S_g
-\end{bmatrix}^{k+1}
-=
-\begin{bmatrix}
-p \\
-S_w \\
-S_g
-\end{bmatrix}^k
-+
-\begin{bmatrix}
-\Delta p \\
-\Delta S_w \\
-\Delta S_g
-\end{bmatrix}^{k+1}
+\begin{bmatrix} p \\ S_w \\ S_g \end{bmatrix}^{k+1} = \begin{bmatrix} p \\ S_w \\ S_g \end{bmatrix}^k + \begin{bmatrix} \Delta p \\ \Delta S_w \\ \Delta S_g \end{bmatrix}^{k+1}
 $$
 
 ### 7.1 Makna praktisnya
