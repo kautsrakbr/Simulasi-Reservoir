@@ -13,9 +13,9 @@ Fokus dokumen ini bukan teori fisika reservoir secara penuh, tetapi lifecycle da
 5. lihat output report,
 6. lihat hubungan output-menjadi-input di tahap berikutnya.
 
-Dokumen ini disusun berdasarkan alur yang sudah dirangkum di [workflow.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/workflow.md), terutama workflow aktual workbook VBA `ressim_NewClass2.xlsm`.
+Dokumen ini disusun berdasarkan alur yang sudah dirangkum di [workflow.md](workflow.md), terutama workflow aktual workbook VBA `ressim_NewClass2.xlsm`.
 
-Versi yang sekarang sudah disesuaikan dengan 6 module utama di [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md), supaya kamu bisa melihat CRUD bukan cuma dari sisi entitas data, tetapi juga dari sisi owner module VBA yang membuat, membaca, meng-update, dan menimpa data itu.
+Versi yang sekarang sudah disesuaikan dengan 6 module utama di [vba.md](vba.md), supaya kamu bisa melihat CRUD bukan cuma dari sisi entitas data, tetapi juga dari sisi owner module VBA yang membuat, membaca, meng-update, dan menimpa data itu.
 
 ## 1. Cara Membaca CRUD di Dokumen Ini
 
@@ -72,7 +72,7 @@ Arti alur ini:
 
 ## 2A. Peta 6 Module VBA sebagai Owner CRUD
 
-Kalau [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md) dijadikan acuan utama, maka lifecycle data di simulator ini sebenarnya dimiliki oleh 6 module berikut.
+Kalau [vba.md](vba.md) dijadikan acuan utama, maka lifecycle data di simulator ini sebenarnya dimiliki oleh 6 module berikut.
 
 ### 2A.1 Data Module
 
@@ -268,7 +268,7 @@ Fungsi utamanya:
 
 Bagian ini adalah ringkasan paling penting kalau kamu ingin cepat melihat siapa membuat apa, siapa membaca apa, dan output mana jadi input tahap berikutnya.
 
-Karena sekarang dokumen ini diselaraskan ke [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md), tabel ini juga menunjukkan module owner dan procedure utama yang terlibat.
+Karena sekarang dokumen ini diselaraskan ke [vba.md](vba.md), tabel ini juga menunjukkan module owner dan procedure utama yang terlibat.
 
 | Entitas Data | Owner module VBA | Create utama | Read utama | Update/Delete logis | Output jadi input apa? |
 | --- | --- | --- | --- | --- | --- |
@@ -297,7 +297,7 @@ Di bawah ini saya pecah satu per satu supaya kamu bisa benar-benar melihat lifec
 Catatan penting:
 
 - section `5` ini tetap entity-centric, jadi kamu bisa melihat hidup-matinya tiap data satu per satu.
-- setelah section ini, saya tambahkan section khusus CRUD per module VBA agar mapping ke [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md) lebih langsung.
+- setelah section ini, saya tambahkan section khusus CRUD per module VBA agar mapping ke [vba.md](vba.md) lebih langsung.
 
 ### 5.1 ReferenceData
 
@@ -1209,7 +1209,7 @@ Catatan CRUD penting:
 
 Bagian ini paling penting untuk menjawab pertanyaanmu tentang "output apa jadi input apa".
 
-Di versi yang sudah diselaraskan dengan [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md), saya juga tulis owner module utamanya di setiap tahap.
+Di versi yang sudah diselaraskan dengan [vba.md](vba.md), saya juga tulis owner module utamanya di setiap tahap.
 
 ### 6.1 Tahap baca input mentah
 

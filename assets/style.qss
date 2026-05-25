@@ -1,0 +1,31 @@
+QWidget {
+	background-color: #f3f5f7;
+	color: #1f2a37;
+	font-family: "Segoe UI";
+	font-size: 10pt;
+}
+
+QMainWindow {
+	background-color: #e9edf1;
+}
+
+QListWidget {
+	background-color: #dfe6ec;
+	border: 1px solid #c4ccd4;
+	padding: 8px;
+}
+
+QListWidget::item {
+	padding: 8px 10px;
+	margin-bottom: 4px;
+	border-radius: 4px;
+}
+
+QListWidget::item:selected {
+	background-color: #1f5f8b;
+	color: #ffffff;
+}
+
+QLabel {
+	background: transparent;
+}

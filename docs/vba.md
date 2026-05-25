@@ -2559,7 +2559,7 @@ Jadi kesimpulannya:
 
 ## 7. Highlight Rumus Penting per Module
 
-Bagian ini saya tambahkan khusus supaya [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md) tidak cuma menjelaskan fungsi procedure, tetapi juga memperjelas rumus-rumus inti yang benar-benar dipakai di kode.
+Bagian ini saya tambahkan khusus supaya [vba.md](vba.md) tidak cuma menjelaskan fungsi procedure, tetapi juga memperjelas rumus-rumus inti yang benar-benar dipakai di kode.
 
 Formatnya sengaja praktis:
 

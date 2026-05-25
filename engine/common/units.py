@@ -1,0 +1,3 @@
+PRESSURE_UNIT = "psi"
+LENGTH_UNIT = "ft"
+TIME_UNIT = "day"
