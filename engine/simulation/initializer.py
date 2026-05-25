@@ -12,9 +12,17 @@ def initialize_state(project_config: ProjectConfig, grid_model: GridModel) -> Re
 
 
 def initialize_hydrostatic_pressure(reference_data: ReferenceData, grid_model: GridModel) -> list[float]:
-	return [reference_data.reference_pressure for _ in grid_model.cells]
+	reference_depth = reference_data.reference_depth
+	density = reference_data.water_density_reference if reference_data.water_density_reference > 0.0 else 1.0
+	gradient = 0.433 * density
+	return [
+		reference_data.reference_pressure + gradient * (cell.depth - reference_depth)
+		for cell in grid_model.cells
+	]
 
 
 def initialize_saturations(project_config: ProjectConfig, grid_model: GridModel) -> tuple[list[float], list[float]]:
-	del project_config
-	return [0.0 for _ in grid_model.cells], [0.0 for _ in grid_model.cells]
+	return (
+		[project_config.initial_conditions.initial_sw for _ in grid_model.cells],
+		[project_config.initial_conditions.initial_sg for _ in grid_model.cells],
+	)

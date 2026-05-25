@@ -1,6 +1,6 @@
-# Simulasi Reservoir
+# CoreReservoir
 
-Ini adalah software reservoir yang akan digunakan untuk tugas/project akhir mas zuher.
+CoreReservoir adalah software reservoir desktop yang sedang dibangun bertahap berdasarkan workflow, frontend, backend, dan strategy project.
 
 ## Struktur Ringkas
 

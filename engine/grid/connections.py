@@ -10,11 +10,14 @@ def build_connections(grid_model: GridModel) -> list[Connection]:
 		for neighbor_id, direction in find_cartesian_neighbors(cell.cell_id, spec):
 			if neighbor_id <= cell.cell_id:
 				continue
+			area, distance = get_connection_geometry(direction, spec)
 			connections.append(
 				Connection(
 					from_cell_id=cell.cell_id,
 					to_cell_id=neighbor_id,
 					direction=direction,
+					area=area,
+					distance=distance,
 				)
 			)
 	return connections
@@ -38,3 +41,13 @@ def find_cartesian_neighbors(cell_index: int, grid_spec: GridSpec) -> list[tuple
 	if k + 1 < nz:
 		neighbors.append((cell_index + plane_size, "z+"))
 	return neighbors
+
+
+def get_connection_geometry(direction: str, grid_spec: GridSpec) -> tuple[float, float]:
+	if direction == "x+":
+		return grid_spec.dy * grid_spec.dz, grid_spec.dx
+	if direction == "y+":
+		return grid_spec.dx * grid_spec.dz, grid_spec.dy
+	if direction == "z+":
+		return grid_spec.dx * grid_spec.dy, grid_spec.dz
+	return 0.0, 1.0

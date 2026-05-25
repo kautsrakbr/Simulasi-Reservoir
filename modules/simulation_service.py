@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from engine.domain.project import ProjectConfig
 from engine.domain.results import RunResult
-from engine.reporting.result_builder import build_run_result
+from engine.simulation.runner import run_simulation as run_engine_simulation
 from modules.validation_service import validate_project
 
 
@@ -11,7 +11,7 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 	if errors:
 		raise ValueError(" ".join(errors))
 
-	return build_run_result(case_name=project_config.run.case_name)
+	return run_engine_simulation(project_config)
 
 
 def validate_and_run(project_config: ProjectConfig) -> RunResult:

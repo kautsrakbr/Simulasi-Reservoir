@@ -10,8 +10,8 @@ from windows.main_window import MainWindow
 
 def create_application(argv: Sequence[str] | None = None) -> QApplication:
 	app = QApplication(list(argv) if argv is not None else sys.argv)
-	app.setApplicationName("Simulasi Reservoir")
-	app.setOrganizationName("Simulasi Reservoir")
+	app.setApplicationName("CoreReservoir")
+	app.setOrganizationName("CoreReservoir")
 	_load_stylesheet(app)
 	return app
 
