@@ -14,6 +14,13 @@ Catatan:
 - Dokumen ini sekarang juga diperdetail memakai VBA dari workbook `basic theory/excell mas zuher/ressim_NewClass.xlsm`, `ressim_NewClass1.xlsm`, dan `ressim_NewClass2.xlsm`.
 - Dari inspeksi VBA, `ressim_NewClass.xlsm` dan `ressim_NewClass1.xlsm` pada dasarnya identik, sedangkan `ressim_NewClass2.xlsm` adalah versi yang lebih berkembang. Karena itu, detail implementasi di bawah terutama mengacu ke `ressim_NewClass2.xlsm`.
 
+Mulai versi ini, dokumen ini diposisikan sebagai master file untuk development software. Jadi isi di dalamnya sengaja menyatukan empat sudut pandang sekaligus:
+
+1. workflow algoritma dari slide,
+2. implementasi aktual dari VBA workbook,
+3. CRUD data yang bergerak di runtime,
+4. arah desain software yang nanti bisa diterjemahkan ke Python.
+
 ## Cara Pakai Dokumen Ini
 
 Dokumen ini cukup panjang. Supaya enak dibaca, pakai jalur baca yang sesuai kebutuhanmu.
@@ -49,8 +56,20 @@ Baca urutan ini:
 
 1. Bagian `1. Gambaran besar`
 2. Bagian `8A. Workflow Aktual dari Workbook VBA`
-3. Bagian `10. Workflow implementasi software`
-4. Bagian `12. Pseudocode sederhana`
+3. Bagian `8B. Peta 6 Module Utama dari Workbook VBA`
+4. Bagian `8C. CRUD Data per Module untuk Development Software`
+5. Bagian `10. Workflow implementasi software`
+6. Bagian `12. Pseudocode sederhana`
+
+### Kalau mau fokus ke module dan CRUD untuk development
+
+Baca urutan ini:
+
+1. Bagian `8A. Workflow Aktual dari Workbook VBA`
+2. Bagian `8B. Peta 6 Module Utama dari Workbook VBA`
+3. Bagian `8C. CRUD Data per Module untuk Development Software`
+4. Bagian `2B. Highlight Rumus Utama`
+5. Bagian `10. Workflow implementasi software`
 
 ## Peta Isi Singkat
 
@@ -66,6 +85,8 @@ Baca urutan ini:
 - `7`: tahap Newton update
 - `8`: tahap convergence dan constraints
 - `8A`: workflow aktual workbook VBA
+- `8B`: peta 6 module utama workbook VBA
+- `8C`: CRUD data per module untuk development software
 - `9` sampai `14`: ringkasan, implementasi software, FAQ, pseudocode, inti materi, dan penutup
 
 ## 0. Status Kecocokan Dokumen dengan Source
@@ -76,8 +97,9 @@ Supaya jelas dari awal, dokumen ini saya susun dengan tiga level kepastian:
 
 - `persis sesuai kode VBA`: rumus atau alur yang memang ditulis langsung di workbook.
 - `interpretasi konsep dari kode`: penjelasan fisik dari rumus yang ada di workbook.
-- `catatan kemungkinan typo / belum final`: bagian yang terlihat masih m 
- aBagian yang sudah saya cocokkan langsung terhadap source:
+- `catatan kemungkinan typo / belum final`: bagian yang terlihat masih merupakan versi latihan, prototipe, atau implementasi yang belum rapi di source.
+
+Bagian yang sudah saya cocokkan langsung terhadap source:
 
 ### 0.2 Yang Sudah Dicocokkan Langsung
 
@@ -2518,6 +2540,467 @@ Kalau diterjemahkan ke bahasa sederhana:
 7. Workbook memperbarui tekanan dan saturasi.
 8. Workbook mengulang proses sampai residual kecil.
 9. Workbook maju ke time step berikutnya dan menulis hasil ke sheet report.
+
+## 8B. Peta 6 Module Utama dari Workbook VBA
+
+Bagian ini saya tambahkan supaya `workflow.md` tidak berhenti di level tahap algoritma, tetapi juga langsung menunjukkan pemetaan ke module nyata yang ada di workbook VBA. Tujuannya sederhana: saat nanti kamu develop software, kamu tidak perlu bolak-balik membuka banyak file hanya untuk menjawab pertanyaan seperti:
+
+- logic ini seharusnya tinggal di module mana?
+- data ini dibentuk di mana?
+- rumus ini milik tahap apa dan owner-nya siapa?
+
+Kalau diringkas, alur owner module-nya adalah:
+
+```text
+Data Module
+-> PVT Module dan Rock Module
+-> Residual Module
+-> Matrix Solver
+-> kembali ke Residual Module untuk update state
+-> kembali ke Data Module untuk commit time step dan report
+```
+
+### 8B.1 Ringkasan cepat 6 module
+
+| Module | Procedure utama | Tugas utama | Input utama | Output utama |
+| --- | --- | --- | --- | --- |
+| `Data Module` | `ReadRefData`, `ReadGridData`, `GridDim`, `AllocateMemory`, `Initialization`, `RunSim`, `UpdateNewTime`, `MakeReport` | membangun model, grid, state awal, loop waktu, dan report | sheet `REF`, `INIT`, dimensi grid, properti default | `ReferenceData`, `GridData`, `ConnectionList`, `InitialState`, `ReportRows` |
+| `PVT Module` | `ReadPVTData`, `calcPVT`, `CalcModel_PVT` | mengubah pressure menjadi properti fluida | sheet `PVT`, pressure cell, parameter referensi fluida | `CellPVT`, array `PVT()` |
+| `Rock Module` | `ReadTableRock`, `CalcRelperm` | mengubah saturasi menjadi relperm dan capillary pressure | sheet `ROCK`, `Sw`, `Sg` | `CellRockFluid` |
+| `Residual Module` | `ResidCell`, `NetFluxIn`, `CalcAllResid`, `Pertub1Cell`, `NewTonIteration` | menghitung flux, accumulation, residual, Jacobian, dan update Newton | connection list, state lama, state iterasi, properti PVT, properti relperm | `Residual`, `RHS`, `Jacobian`, `IterationState` baru |
+| `Matrix Solver` | `COO_to_CSR`, `ScaleMatrix`, `BuildILU`, `ApplyILU`, `SolvePBiCGSTAB`, `SolveSparseSystem` | menyelesaikan sistem linear sparse Newton | Jacobian COO dan `RHS` | `NewtonCorrection` |
+| `Matrix 1` | `zFactorHY`, `FindFYZero`, `FY`, `dFYdY` | utility korelasi `z-factor` gas | `Tpr`, `Ppr` | `z-factor` |
+
+### 8B.2 Data Module
+
+Peran utamanya:
+
+- menjadi pintu masuk data model,
+- membentuk geometri dan koneksi grid,
+- mengalokasikan semua array solver,
+- menyiapkan kondisi awal,
+- mengatur loop time step,
+- menulis hasil ke Excel.
+
+Kalau diterjemahkan ke bahasa software:
+
+- ini adalah gabungan `input_reader`, `grid_builder`, `state_initializer`, `simulation_runner`, dan `report_writer`.
+
+Rumus paling penting yang benar-benar hidup di module ini:
+
+$$
+ngrid = nx \times ny \times nz
+$$
+
+$$
+V_b = dx_i \times dy_j \times dz_k
+$$
+
+$$
+T_{ij} = 0.00603 \times \frac{2k_i k_j}{k_i + k_j} \times \frac{A_{ij}}{L_{ij}}
+$$
+
+$$
+p_{init,i} = pInit + \rho_{o,ref}\frac{(depth_i - dREF)}{144}
+$$
+
+$$
+nnz = \sum_{i=1}^{ngrid} 9(1 + nCon_i)
+$$
+
+Arti praktis untuk development software:
+
+- semua data umur panjang lahir atau pertama kali dialokasikan di sini.
+- kalau nanti kamu bikin software Python, bagian ini jangan dicampur dengan solver linear dan jangan dicampur dengan evaluasi properti fluida.
+
+### 8B.3 PVT Module
+
+Peran utamanya:
+
+- membaca tabel PVT,
+- menginterpolasi properti fluida dari pressure,
+- membentuk densitas dan kompresibilitas in-situ.
+
+Rumus paling penting di module ini:
+
+$$
+Y(p) = Y_i + \frac{Y_i - Y_{i+1}}{p_i - p_{i+1}} (p - p_i)
+$$
+
+$$
+\rho_w = \frac{\rho_{w,ref}}{B_w}
+$$
+
+$$
+\rho_g = \frac{\rho_{g,ref}}{B_g}
+$$
+
+$$
+\rho_o \approx \frac{\rho_{o,ref} + R_{so}\rho_{g,ref} + R_{sw}\rho_{w,ref}}{B_o}
+$$
+
+$$
+C_o = \frac{C_{o,ref}}{1 + C_{o,ref}(p - p_{ref})}
+$$
+
+$$
+C_w = \frac{C_{w,ref}}{1 + C_{w,ref}(p - p_{ref})}
+$$
+
+$$
+C_g = \frac{C_{g,ref}}{1 + C_{g,ref}(p - p_{ref})}
+$$
+
+Arti praktis untuk development software:
+
+- module ini sebaiknya berdiri sendiri sebagai evaluator properti fluida.
+- input utamanya pressure, output utamanya paket properti fluida yang siap dipakai residual dan flux.
+- jangan letakkan rumus flux di module ini; tugasnya berhenti pada `given pressure -> return fluid properties`.
+
+### 8B.4 Rock Module
+
+Peran utamanya:
+
+- membaca tabel relperm dan capillary pressure,
+- mengubah `Sw` dan `Sg` menjadi `kro`, `krw`, `krg`, `Pcow`, `Pcgw`.
+
+Rumus paling penting di module ini:
+
+$$
+Y(S_w) = Y_i + \frac{Y_i - Y_{i+1}}{S_{w,i} - S_{w,i+1}} (S_w - S_{w,i})
+$$
+
+$$
+Y(S_g) = Y_i + \frac{Y_i - Y_{i+1}}{S_{g,i} - S_{g,i+1}} (S_g - S_{g,i})
+$$
+
+Secara intent kode, `kro` tiga fasa juga dibentuk dari kombinasi tabel oil-water dan gas-water, yaitu semangat model Stone 3-phase, walaupun literal rumus di workbook masih belum rapi.
+
+Arti praktis untuk development software:
+
+- ini adalah `rock_fluid_model` atau `relperm_model`.
+- input utamanya saturasi, output utamanya properti relperm dan capillary pressure.
+- nanti kalau kamu bikin software, bagian ini harus mudah diganti jika ingin memakai Corey, Stone I, Stone II, atau model lain.
+
+### 8B.5 Residual Module
+
+Peran utamanya:
+
+- menghitung flux antar cell,
+- menghitung accumulation,
+- membentuk residual per fasa,
+- menghitung Jacobian numerik,
+- memanggil solver linear,
+- meng-update state Newton.
+
+Rumus paling penting di module ini:
+
+$$
+\Delta \Phi_o = p_j - p_i - \frac{\rho_{o,j} + \rho_{o,i}}{2} \frac{\Delta z}{144}
+$$
+
+$$
+\Delta \Phi_w = p_j - p_i - \frac{\rho_{w,j} + \rho_{w,i}}{2} \frac{\Delta z}{144} - (Pcow_j - Pcow_i)
+$$
+
+$$
+\Delta \Phi_g = p_j - p_i - \frac{\rho_{g,j} + \rho_{g,i}}{2} \frac{\Delta z}{144} + (Pcgw_j - Pcgw_i)
+$$
+
+$$
+F_o = T_{ij} \times \frac{k_{ro,up}}{\mu_{o,up}} \times \frac{\Delta \Phi_o}{\overline{B_o}}
+$$
+
+$$
+F_w = T_{ij} \times \frac{k_{rw,up}}{\mu_{w,up}} \times \frac{\Delta \Phi_w}{\overline{B_w}}
+$$
+
+$$
+F_g = T_{ij} \times \frac{k_{rg,up}}{\mu_{g,up}} \times \frac{\Delta \Phi_g}{\overline{B_g}}
+$$
+
+$$
+V_{pore}^k = V_b \phi \left(1 + c_{rock}(p^k - p_{ref})\right)
+$$
+
+$$
+Acc_o = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_o^k}{B_o^k} - \frac{V_{pore}^n S_o^n}{B_o^n}\right)
+$$
+
+$$
+Acc_w = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_w^k}{B_w^k} - \frac{V_{pore}^n S_w^n}{B_w^n}\right)
+$$
+
+$$
+Acc_g = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_g^k}{B_g^k} - \frac{V_{pore}^n S_g^n}{B_*^n}\right) + R_{so}^k Acc_o + R_{sw}^k Acc_w
+$$
+
+$$
+R_o = NetFlux_o - Acc_o
+$$
+
+$$
+R_w = NetFlux_w - Acc_w
+$$
+
+$$
+R_g = NetFlux_g - Acc_g
+$$
+
+$$
+\frac{\partial R}{\partial p} \approx \frac{R^{base} - R^{perturbed}}{\Delta p}
+$$
+
+$$
+\frac{\partial R}{\partial S_w} \approx \frac{R^{perturbed} - R^{base}}{\Delta S_w}
+$$
+
+$$
+\frac{\partial R}{\partial S_g} \approx \frac{R^{perturbed} - R^{base}}{\Delta S_g}
+$$
+
+$$
+J \Delta m = -R
+$$
+
+$$
+p^{k+1} = p^k + \Delta p, \quad S_w^{k+1} = S_w^k + \Delta S_w, \quad S_g^{k+1} = S_g^k + \Delta S_g
+$$
+
+$$
+S_o^{k+1} = 1 - S_w^{k+1} - S_g^{k+1}
+$$
+
+Arti praktis untuk development software:
+
+- ini adalah jantung simulator.
+- kalau nanti kamu membangun software, module ini idealnya dipisah lagi menjadi beberapa komponen: `flux_calculator`, `accumulation_model`, `residual_assembler`, `jacobian_assembler`, dan `newton_updater`.
+
+### 8B.6 Matrix Solver
+
+Peran utamanya:
+
+- menerima Jacobian sparse dan RHS,
+- mengubah format matrix,
+- melakukan scaling,
+- membangun preconditioner,
+- menjalankan BiCGSTAB sampai dapat koreksi unknown.
+
+Rumus paling penting di module ini:
+
+$$
+y = A x
+$$
+
+$$
+a \cdot b = \sum_i a_i b_i, \quad \|a\| = \sqrt{a \cdot a}
+$$
+
+$$
+A_{i,:}^{scaled} = \frac{A_{i,:}}{A_{ii}}, \quad b_i^{scaled} = \frac{b_i}{A_{ii}}
+$$
+
+$$
+M \approx LU
+$$
+
+$$
+\beta = \left(\frac{\rho}{\rho_{old}}\right)\left(\frac{\alpha}{\omega}\right)
+$$
+
+$$
+p = r + \beta(p - \omega v)
+$$
+
+$$
+\alpha = \frac{\rho}{r_0 \cdot v}
+$$
+
+$$
+s = r - \alpha v
+$$
+
+$$
+\omega = \frac{t \cdot s}{t \cdot t}
+$$
+
+$$
+x = x + \alpha \hat{p} + \omega \hat{s}
+$$
+
+Arti praktis untuk development software:
+
+- bagian ini jangan dicampur dengan physics residual.
+- ini murni `linear_algebra_engine`.
+- kalau nanti ingin ganti solver ke GMRES, CPR, atau direct sparse solver, perubahan idealnya cukup terjadi di sini.
+
+### 8B.7 Matrix 1
+
+Peran utamanya:
+
+- utility korelasi `z-factor` gas.
+
+Rumus paling penting di module ini:
+
+$$
+z = \left(\frac{0.6125 P_{pr}}{T_{pr} y}\right)\exp\left[-1.2\left(1 - \frac{1}{T_{pr}}\right)^2\right]
+$$
+
+$$
+y^{new} = y^{old} - \frac{FY(T_{pr}, P_{pr}, y)}{dFY/dy}
+$$
+
+Arti praktis untuk development software:
+
+- pada workbook sekarang, module ini belum masuk ke flow utama `RunSim`.
+- jadi untuk development software, anggap dulu ini utility tambahan yang bisa dipisah dari main workflow.
+
+## 8C. CRUD Data per Module untuk Development Software
+
+Bagian ini adalah jembatan langsung antara `workflow.md`, `vba.md`, dan kebutuhan software engineering. Kalau bagian `8B` menjawab "module ini tugasnya apa", maka bagian `8C` menjawab "module ini menciptakan data apa, membaca apa, meng-update apa, dan data lamanya hilang dengan cara apa".
+
+### 8C.1 Tabel CRUD ringkas per module
+
+| Module | Create | Read | Update | Delete / reset logis | Output jadi input mana? |
+| --- | --- | --- | --- | --- | --- |
+| `Data Module` | reference data, grid data, connection list, state awal, report | sheet input, state runtime | previous state, waktu simulasi, report block | `ReDim` array, clear report awal | ke `PVT Module`, `Rock Module`, `Residual Module` |
+| `PVT Module` | tabel PVT, properti fluida per cell | pressure cell, parameter referensi | overwrite `CellPVT` saat pressure berubah | hasil evaluasi lama tertimpa | ke `Residual Module` |
+| `Rock Module` | tabel relperm/capillary, properti relperm per cell | saturasi cell | overwrite `CellRockFluid` saat saturasi berubah | hasil evaluasi lama tertimpa | ke `Residual Module` |
+| `Residual Module` | flux, accumulation, residual, RHS, Jacobian numerik, updated iteration state | connection list, state lama, state iterasi, `CellPVT`, `CellRockFluid` | residual, Jacobian, state Newton di tiap iterasi | assembly lama tertimpa iterasi baru | ke `Matrix Solver`, lalu balik lagi ke dirinya sendiri dan ke `Data Module` |
+| `Matrix Solver` | CSR matrix, ILU, vektor solusi | Jacobian COO, RHS | vektor iteratif internal solver | buffer solver tertimpa solve berikutnya | ke `Residual Module` sebagai correction |
+| `Matrix 1` | nilai iterasi `y`, `z-factor` | `Tpr`, `Ppr` | update `y` sampai akar tercapai | iterasi lama tertimpa | secara konsep ke module gas/PVT |
+
+### 8C.2 CRUD detail yang paling penting untuk software
+
+#### a. Data yang lahir sekali di awal run
+
+Owner utamanya:
+
+- `Data Module`
+- sebagian `PVT Module` dan `Rock Module`
+
+Contoh data:
+
+- `ReferenceData`
+- `GridData`
+- `ConnectionList`
+- `PVTTable`
+- `RockFluidTable`
+- struktur sparse awal Jacobian
+
+Arti untuk software:
+
+- data jenis ini cocok ditempatkan pada object domain yang relatif stabil, misalnya `Grid`, `Connections`, `ReferenceData`, `PVTTable`, `RockTable`.
+
+#### b. Data yang terus dibaca ulang tapi jarang diubah
+
+Owner utamanya:
+
+- `PVT Module`
+- `Rock Module`
+- `Data Module`
+
+Contoh data:
+
+- tabel PVT,
+- tabel relperm,
+- properti grid,
+- daftar koneksi.
+
+Arti untuk software:
+
+- data jenis ini sebaiknya immutable atau minimal tidak sering diubah selama satu run.
+
+#### c. Data yang berubah di tiap iterasi Newton
+
+Owner utamanya:
+
+- `Residual Module`
+- `Matrix Solver`
+
+Contoh data:
+
+- `pk`, `swk`, `sgk`, `sok`
+- `CellPVT`
+- `CellRockFluid`
+- `NetFlux`
+- `Accumulation`
+- `Residual`
+- `RHS`
+- `aMat.Val`
+- vector correction `x`
+
+Arti untuk software:
+
+- data jenis ini adalah runtime working state.
+- jangan dicampur dengan input mentah dan jangan disimpan di layer UI.
+
+#### d. Data yang di-commit saat time step selesai
+
+Owner utamanya:
+
+- `Data Module`
+
+Contoh data:
+
+- `pnn`, `swnn`, `sgnn`, `sonn`
+- `pn1`, `swn1`, `sgn1`, `son1`
+- waktu simulasi
+
+Arti untuk software:
+
+- ini adalah boundary antara satu time step dan time step berikutnya.
+- pada desain software, bagian ini cocok ditangani oleh `TimeStepController` atau `StateManager`.
+
+#### e. Data yang menjadi output akhir ke user
+
+Owner utamanya:
+
+- `Data Module`
+
+Contoh data:
+
+- pressure map per waktu,
+- `So`, `Sw`, `Sg` per waktu,
+- block report di sheet output.
+
+Arti untuk software:
+
+- ini sebaiknya dipisah dari runtime solver internals.
+- hasil solver konvergen menjadi input report layer, bukan langsung bercampur dengan UI logic.
+
+### 8C.3 Flow CRUD antar module yang benar-benar terjadi
+
+Kalau disederhanakan ke bentuk yang sangat praktis untuk development software, alurnya seperti ini:
+
+```text
+Data Module membuat input model dan state awal
+-> PVT Module membuat properti fluida dari pressure
+-> Rock Module membuat relperm dan capillary pressure dari saturasi
+-> Residual Module membaca semuanya lalu membuat flux, accumulation, residual, Jacobian, RHS
+-> Matrix Solver membaca Jacobian dan RHS lalu membuat correction
+-> Residual Module memakai correction untuk update state iterasi
+-> jika belum konvergen, ulang ke evaluasi properti
+-> jika konvergen, Data Module commit state dan membuat report
+```
+
+Kalau diubah menjadi satu kalimat pendek:
+
+`Data Module` membangun state, `PVT Module` dan `Rock Module` mengevaluasi properti, `Residual Module` membentuk masalah nonlinear, `Matrix Solver` memecahkan masalah linearnya, lalu `Data Module` menyimpan state yang sudah diterima dan menulis hasil.
+
+### 8C.4 Implikasi langsung untuk desain software
+
+Kalau kamu menjadikan dokumen ini sebagai master file development, maka pemisahan tanggung jawab yang paling sehat biasanya seperti ini:
+
+1. `reader/input layer`: baca `REF`, `PVT`, `ROCK`, `INIT`, dan grid.
+2. `domain model layer`: simpan `Grid`, `Connection`, `State`, `ReferenceData`, `PVTTable`, `RockTable`.
+3. `property layer`: evaluator PVT dan relperm.
+4. `physics layer`: flux, accumulation, residual.
+5. `numerics layer`: Jacobian assembler dan linear solver.
+6. `simulation layer`: Newton loop, time-step loop, convergence check, commit step.
+7. `report layer`: export hasil untuk user.
+
+Kalau pemisahan ini dijaga, software nanti jauh lebih mudah dirawat daripada jika semua rumus dan semua data diletakkan di satu class besar.
 
 ## 9. Ringkasan hubungan antar tahap
 
