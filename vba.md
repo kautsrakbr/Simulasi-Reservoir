@@ -2557,7 +2557,872 @@ Jadi kesimpulannya:
 - disiapkan untuk komputasi properti gas,
 - tetapi belum benar-benar diintegrasikan penuh ke runtime utama pada versi workbook ini.
 
-## 7. Ringkasan Fungsi Tiap Module
+## 7. Highlight Rumus Penting per Module
+
+Bagian ini saya tambahkan khusus supaya [vba.md](c:/My%20Workspaces/venv.Python/SIMULASI%20RESERVOIR/vba.md) tidak cuma menjelaskan fungsi procedure, tetapi juga memperjelas rumus-rumus inti yang benar-benar dipakai di kode.
+
+Formatnya sengaja praktis:
+
+- `dipakai di`: procedure atau function tempat rumus muncul.
+- `rumus`: bentuk matematis dari kode VBA.
+- `arti`: makna fisik atau numeriknya.
+- `output dipakai untuk`: tahap berikutnya di workflow.
+
+### 7.1 Data Module
+
+#### a. Jumlah total grid
+
+Dipakai di:
+
+- `ReadGridData`
+
+Rumus:
+
+$$
+ngrid = nx \times ny \times nz
+$$
+
+Arti:
+
+- menghitung jumlah total cell model.
+
+Output dipakai untuk:
+
+- alokasi semua array global solver,
+- menentukan ukuran Jacobian `3 * ngrid`.
+
+#### b. Bulk volume cell
+
+Dipakai di:
+
+- `GridDim`
+
+Rumus:
+
+$$
+V_b = dx_i \times dy_j \times dz_k
+$$
+
+Arti:
+
+- volume batuan total pada satu cell.
+
+Output dipakai untuk:
+
+- pore volume,
+- accumulation term di `ResidCell`.
+
+#### c. Jarak koneksi antar cell
+
+Dipakai di:
+
+- `GridDim`
+
+Rumus contoh arah `x`:
+
+$$
+L_{ij} = 0.5(dx_i + dx_j)
+$$
+
+Arti:
+
+- jarak karakteristik antar pusat cell untuk arah tertentu.
+
+Output dipakai untuk:
+
+- transmissibility.
+
+#### d. Luas bidang kontak koneksi
+
+Dipakai di:
+
+- `GridDim`
+
+Rumus contoh:
+
+$$
+A_{ij,x} = dy_j \times dz_k
+$$
+
+$$
+A_{ij,y} = dx_i \times dz_k
+$$
+
+$$
+A_{ij,z} = dx_i \times dy_j
+$$
+
+Arti:
+
+- luas interface tempat fluida mengalir antar dua cell.
+
+Output dipakai untuk:
+
+- transmissibility per koneksi.
+
+#### e. Transmissibility
+
+Dipakai di:
+
+- `GridDim`
+
+Rumus:
+
+$$
+T_{ij} = 0.00603 \times \frac{2k_i k_j}{k_i + k_j} \times \frac{A_{ij}}{L_{ij}}
+$$
+
+Arti:
+
+- mengukur kekuatan hubungan aliran antar dua cell.
+
+Output dipakai untuk:
+
+- `NetFluxIn` pada `Residual Module`.
+
+#### f. Ukuran Jacobian dan jumlah non-zero
+
+Dipakai di:
+
+- `AllocateMemory`
+
+Rumus:
+
+$$
+n_{J} = 3 \times ngrid
+$$
+
+$$
+nnz = \sum_{i=1}^{ngrid} 9(1 + nCon_i)
+$$
+
+Arti:
+
+- tiap cell punya 3 unknown utama: `p`, `Sw`, `Sg`.
+- tiap blok coupling berukuran `3 x 3`, jadi berkontribusi `9` elemen non-zero.
+
+Output dipakai untuk:
+
+- alokasi `aMat.n`, `aMat.nnz`, `aMat.Val`, `aMat.iRow`, `aMat.jCol`.
+
+#### g. Tekanan awal hidrostatik
+
+Dipakai di:
+
+- `Initialization`
+
+Rumus:
+
+$$
+p_{init,i} = pInit + \rho_{o,ref}\frac{(depth_i - dREF)}{144}
+$$
+
+Arti:
+
+- membentuk distribusi pressure awal mengikuti kedalaman.
+
+Output dipakai untuk:
+
+- `pnn(i)` dan `pk(i)` saat simulasi mulai.
+
+### 7.2 PVT Module
+
+#### a. Interpolasi linear properti PVT
+
+Dipakai di:
+
+- `calcPVT`
+
+Rumus umum:
+
+$$
+Y(p) = Y_i + \frac{Y_i - Y_{i+1}}{p_i - p_{i+1}}(p - p_i)
+$$
+
+Arti:
+
+- mencari properti fluida pada pressure yang tidak persis berada di titik tabel.
+
+Output dipakai untuk:
+
+- `Bo`, `Bw`, `Bg`, `mo`, `mw`, `mg`, `Rso`, `Rsw` pada satu cell.
+
+#### b. Densitas water in-situ
+
+Dipakai di:
+
+- `calcPVT`
+
+Rumus:
+
+$$
+\rho_w = \frac{\rho_{w,ref}}{B_w}
+$$
+
+Arti:
+
+- mengubah densitas referensi water menjadi densitas pada kondisi reservoir.
+
+Output dipakai untuk:
+
+- gravity term water di `NetFluxIn`.
+
+#### c. Densitas gas in-situ
+
+Dipakai di:
+
+- `calcPVT`
+
+Rumus:
+
+$$
+\rho_g = \frac{\rho_{g,ref}}{B_g}
+$$
+
+Arti:
+
+- densitas gas pada kondisi reservoir.
+
+Output dipakai untuk:
+
+- gravity term gas di `NetFluxIn`.
+
+#### d. Densitas oil in-situ
+
+Dipakai di:
+
+- `calcPVT`
+
+Rumus sesuai intent kode:
+
+$$
+\rho_o \approx \frac{\rho_{o,ref} + R_{so}\rho_{g,ref} + R_{sw}\rho_{w,ref}}{B_o}
+$$
+
+Arti:
+
+- densitas oil pada reservoir dengan kontribusi komponen terlarut.
+
+Output dipakai untuk:
+
+- gravity term oil di `NetFluxIn`.
+
+Catatan:
+
+- di kode ada typo `rDWATER`; secara fisik paling masuk akal dibaca sebagai `rDENWATER`.
+
+#### e. Kompresibilitas fluida terhadap pressure
+
+Dipakai di:
+
+- `calcPVT`
+
+Rumus:
+
+$$
+C_o = \frac{C_{o,ref}}{1 + C_{o,ref}(p - p_{ref})}
+$$
+
+$$
+C_w = \frac{C_{w,ref}}{1 + C_{w,ref}(p - p_{ref})}
+$$
+
+$$
+C_g = \frac{C_{g,ref}}{1 + C_{g,ref}(p - p_{ref})}
+$$
+
+Arti:
+
+- memberi properti kompresibilitas pada pressure cell sekarang.
+
+Output dipakai untuk:
+
+- evaluasi sifat fluida saat runtime, walaupun di potongan ini belum semua dipakai eksplisit di residual.
+
+### 7.3 Rock Module
+
+#### a. Interpolasi linear relperm dan capillary pressure
+
+Dipakai di:
+
+- `CalcRelperm`
+
+Rumus umum oil-water:
+
+$$
+Y(S_w) = Y_i + \frac{Y_i - Y_{i+1}}{S_{w,i} - S_{w,i+1}}(S_w - S_{w,i})
+$$
+
+Rumus umum gas-water:
+
+$$
+Y(S_g) = Y_i + \frac{Y_i - Y_{i+1}}{S_{g,i} - S_{g,i+1}}(S_g - S_{g,i})
+$$
+
+Arti:
+
+- mencari `kro`, `krw`, `krg`, `pcow`, `pcgw` dari tabel batuan-fluida.
+
+Output dipakai untuk:
+
+- mobility dan capillary pressure di residual.
+
+#### b. Relperm oil tiga fasa ala Stone
+
+Dipakai di:
+
+- `CalcRelperm`
+
+Rumus sesuai intent kode:
+
+$$
+k_{ro,3p} \sim f(k_{ro}^{ow}, k_{rw}^{ow}, k_{rg}^{gw}, k_{rw}^{gw})
+$$
+
+Arti:
+
+- menggabungkan tabel dua fasa menjadi `kro` efektif tiga fasa.
+
+Output dipakai untuk:
+
+- flux oil di `NetFluxIn`.
+
+Catatan:
+
+- ekspresi literal di VBA tampak belum bersih, jadi untuk implementasi software nanti kamu perlu memilih bentuk Stone yang benar dan konsisten.
+
+### 7.4 Residual Module
+
+#### a. Potential difference oil
+
+Dipakai di:
+
+- `NetFluxIn`
+
+Rumus:
+
+$$
+\Delta \Phi_o = p_j - p_i - \frac{(\rho_{o,j} + \rho_{o,i})}{2}\frac{\Delta z}{144}
+$$
+
+Arti:
+
+- driving force oil karena pressure dan gravitasi.
+
+Output dipakai untuk:
+
+- flux oil.
+
+#### b. Potential difference water
+
+Dipakai di:
+
+- `NetFluxIn`
+
+Rumus:
+
+$$
+\Delta \Phi_w = p_j - p_i - \frac{(\rho_{w,j} + \rho_{w,i})}{2}\frac{\Delta z}{144} - (Pcow_j - Pcow_i)
+$$
+
+Arti:
+
+- driving force water karena pressure, gravitasi, dan capillary pressure.
+
+Output dipakai untuk:
+
+- flux water.
+
+#### c. Potential difference gas
+
+Dipakai di:
+
+- `NetFluxIn`
+
+Rumus:
+
+$$
+\Delta \Phi_g = p_j - p_i - \frac{(\rho_{g,j} + \rho_{g,i})}{2}\frac{\Delta z}{144} + (Pcgw_j - Pcgw_i)
+$$
+
+Arti:
+
+- driving force gas karena pressure, gravitasi, dan capillary pressure gas-water.
+
+Output dipakai untuk:
+
+- flux gas.
+
+#### d. Rata-rata formation volume factor antar cell
+
+Dipakai di:
+
+- `NetFluxIn`
+
+Rumus:
+
+$$
+\overline{B_o} = 0.5(B_{o,i} + B_{o,j})
+$$
+
+$$
+\overline{B_w} = 0.5(B_{w,i} + B_{w,j})
+$$
+
+$$
+\overline{B_g} = 0.5(B_{g,i} + B_{g,j})
+$$
+
+Arti:
+
+- memakai nilai rata-rata dua cell untuk menormalkan flux.
+
+Output dipakai untuk:
+
+- rumus flux tiap fasa.
+
+#### e. Flux antar cell dengan upwinding
+
+Dipakai di:
+
+- `NetFluxIn`
+
+Rumus oil:
+
+$$
+F_o = T_{ij}\left(\frac{k_{ro,up}}{\mu_{o,up}}\right)\frac{\Delta \Phi_o}{\overline{B_o}}
+$$
+
+Rumus water:
+
+$$
+F_w = T_{ij}\left(\frac{k_{rw,up}}{\mu_{w,up}}\right)\frac{\Delta \Phi_w}{\overline{B_w}}
+$$
+
+Rumus gas:
+
+$$
+F_g = T_{ij}\left(\frac{k_{rg,up}}{\mu_{g,up}}\right)\frac{\Delta \Phi_g}{\overline{B_g}}
+$$
+
+Arti:
+
+- menghitung laju aliran antar dua cell untuk tiap phase.
+- properti `kr` dan `mu` diambil dari sisi upstream sesuai tanda potential difference.
+
+Output dipakai untuk:
+
+- `NetResO`, `NetResW`, `NetResG` di `ResidCell`.
+
+#### f. Pore volume terkompresi
+
+Dipakai di:
+
+- `ResidCell`
+
+Rumus state sekarang:
+
+$$
+V_{pore}^k = V_b\phi(1 + c_{rock}(p^k - p_{ref}))
+$$
+
+Rumus state lama:
+
+$$
+V_{pore}^n = V_b\phi(1 + c_{rock}(p^n - p_{ref}))
+$$
+
+Arti:
+
+- pore volume berubah terhadap pressure karena kompresibilitas batuan.
+
+Output dipakai untuk:
+
+- accumulation oil, water, gas.
+
+#### g. Accumulation oil dan water
+
+Dipakai di:
+
+- `ResidCell`
+
+Rumus oil:
+
+$$
+Acc_o = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_o^k}{B_o^k} - \frac{V_{pore}^n S_o^n}{B_o^n}\right)
+$$
+
+Rumus water:
+
+$$
+Acc_w = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_w^k}{B_w^k} - \frac{V_{pore}^n S_w^n}{B_w^n}\right)
+$$
+
+Arti:
+
+- perubahan kandungan oil dan water di satu cell selama satu time step.
+
+Output dipakai untuk:
+
+- residual oil dan water.
+
+#### h. Accumulation gas
+
+Dipakai di:
+
+- `ResidCell`
+
+Rumus sesuai intent kode:
+
+$$
+Acc_g = \frac{1}{\Delta t}\left(\frac{V_{pore}^k S_g^k}{B_g^k} - \frac{V_{pore}^n S_g^n}{B_*^n}\right) + R_{so}^k Acc_o + R_{sw}^k Acc_w
+$$
+
+Arti:
+
+- perubahan kandungan gas bebas ditambah coupling gas terlarut.
+
+Output dipakai untuk:
+
+- residual gas.
+
+Catatan:
+
+- kode state lama memakai `enPVT.Bo`; secara fisik kemungkinan mestinya `enPVT.Bg`.
+
+#### i. Residual per phase
+
+Dipakai di:
+
+- `ResidCell`
+
+Rumus aktual workbook:
+
+$$
+R_o = NetFlux_o - Acc_o
+$$
+
+$$
+R_w = NetFlux_w - Acc_w
+$$
+
+$$
+R_g = NetFlux_g - Acc_g
+$$
+
+Arti:
+
+- neraca massa per phase pada satu cell.
+
+Output dipakai untuk:
+
+- convergence check,
+- RHS Newton,
+- Jacobian numerik.
+
+#### j. Error residual maksimum
+
+Dipakai di:
+
+- `CalcAllResid`
+
+Rumus:
+
+$$
+ResidErr = \max_i \left(|R_{o,i}|, |R_{w,i}|, |R_{g,i}|\right)
+$$
+
+Arti:
+
+- error terburuk di seluruh model.
+
+Output dipakai untuk:
+
+- keputusan konvergen atau belum di `RunSim`.
+
+#### k. Turunan numerik Jacobian terhadap pressure
+
+Dipakai di:
+
+- `Pertub1Cell`
+
+Rumus:
+
+$$
+\frac{\partial R}{\partial p} \approx \frac{R^{base} - R^{pert}}{\Delta p}
+$$
+
+Arti:
+
+- sensitivitas residual terhadap perubahan pressure.
+
+Output dipakai untuk:
+
+- blok kolom pressure pada Jacobian.
+
+#### l. Turunan numerik Jacobian terhadap saturasi
+
+Dipakai di:
+
+- `Pertub1Cell`
+
+Rumus:
+
+$$
+\frac{\partial R}{\partial S_w} \approx \frac{R^{pert} - R^{base}}{\Delta S_w}
+$$
+
+$$
+\frac{\partial R}{\partial S_g} \approx \frac{R^{pert} - R^{base}}{\Delta S_g}
+$$
+
+Arti:
+
+- sensitivitas residual terhadap perubahan saturasi.
+
+Output dipakai untuk:
+
+- blok kolom saturasi pada Jacobian.
+
+#### m. Sistem Newton dan update unknown
+
+Dipakai di:
+
+- `NewTonIteration`
+
+Rumus:
+
+$$
+J \Delta x = -R
+$$
+
+$$
+p^{k+1} = p^k + \Delta p
+$$
+
+$$
+S_w^{k+1} = S_w^k + \Delta S_w
+$$
+
+$$
+S_g^{k+1} = S_g^k + \Delta S_g
+$$
+
+$$
+S_o^{k+1} = 1 - S_w^{k+1} - S_g^{k+1}
+$$
+
+Arti:
+
+- ini inti nonlinear solve reservoir simulator.
+
+Output dipakai untuk:
+
+- state iterasi baru sebelum residual dihitung lagi.
+
+### 7.5 Matrix Solver
+
+#### a. Matrix-vector product
+
+Dipakai di:
+
+- `SpMV`
+
+Rumus:
+
+$$
+y = A x
+$$
+
+Arti:
+
+- operasi dasar untuk solver iteratif sparse.
+
+Output dipakai untuk:
+
+- residual linear dan iterasi BiCGSTAB.
+
+#### b. Dot product dan norm
+
+Dipakai di:
+
+- `Dot`
+- `Norm`
+
+Rumus:
+
+$$
+a \cdot b = \sum_i a_i b_i
+$$
+
+$$
+\|a\| = \sqrt{a \cdot a}
+$$
+
+Arti:
+
+- operasi dasar vektor untuk mengukur residual solver.
+
+Output dipakai untuk:
+
+- perhitungan `rho`, `alpha`, `omega`, dan stopping criterion.
+
+#### c. Scaling diagonal
+
+Dipakai di:
+
+- `ScaleMatrix`
+
+Rumus:
+
+$$
+A_{i,:}^{scaled} = \frac{A_{i,:}}{A_{ii}}
+$$
+
+$$
+b_i^{scaled} = \frac{b_i}{A_{ii}}
+$$
+
+Arti:
+
+- menormalkan baris sistem linear terhadap diagonal.
+
+Output dipakai untuk:
+
+- membuat solve lebih stabil.
+
+#### d. Preconditioned BiCGSTAB
+
+Dipakai di:
+
+- `SolvePBiCGSTAB`
+
+Rumus inti:
+
+$$
+\beta = \left(\frac{\rho}{\rho_{old}}\right)\left(\frac{\alpha}{\omega}\right)
+$$
+
+$$
+p = r + \beta(p - \omega v)
+$$
+
+$$
+\alpha = \frac{\rho}{r_0 \cdot v}
+$$
+
+$$
+s = r - \alpha v
+$$
+
+$$
+\omega = \frac{t \cdot s}{t \cdot t}
+$$
+
+$$
+x = x + \alpha \hat{p} + \omega \hat{s}
+$$
+
+$$
+r = s - \omega t
+$$
+
+Arti:
+
+- langkah-langkah inti iterasi BiCGSTAB untuk menyelesaikan sistem sparse non-symmetric.
+
+Output dipakai untuk:
+
+- `NewtonCorrection` yang dikirim balik ke `Residual Module`.
+
+#### e. ILU application
+
+Dipakai di:
+
+- `BuildILU`
+- `ApplyILU`
+
+Rumus konsep:
+
+$$
+M \approx LU
+$$
+
+$$
+M^{-1}r \Rightarrow \text{forward solve + backward solve}
+$$
+
+Arti:
+
+- ILU dipakai sebagai preconditioner agar iterasi solver lebih cepat dan lebih stabil.
+
+Output dipakai untuk:
+
+- `ph` dan `sh` pada BiCGSTAB.
+
+### 7.6 Matrix 1
+
+#### a. Korelasi z-factor
+
+Dipakai di:
+
+- `zFactorHY`
+
+Rumus:
+
+$$
+z = \left(\frac{0.6125 P_{pr}}{T_{pr} y}\right)\exp\left[-1.2\left(1 - \frac{1}{T_{pr}}\right)^2\right]
+$$
+
+Arti:
+
+- menghitung faktor kompresibilitas gas `z`.
+
+Output dipakai untuk:
+
+- secara konsep bisa dipakai pada model properti gas.
+
+#### b. Newton iteration satu variabel untuk akar `FY = 0`
+
+Dipakai di:
+
+- `FindFYZero`
+
+Rumus:
+
+$$
+y^{new} = y^{old} - \frac{FY(T_{pr}, P_{pr}, y)}{\frac{dFY}{dy}}
+$$
+
+Arti:
+
+- mencari akar fungsi `FY` secara iteratif.
+
+Output dipakai untuk:
+
+- nilai `y` pada rumus `zFactorHY`.
+
+#### c. Turunan numerik `FY`
+
+Dipakai di:
+
+- `dFYdY`
+
+Rumus:
+
+$$
+\frac{dFY}{dy} \approx \frac{FY(y + \Delta y) - FY(y)}{\Delta y}
+$$
+
+Arti:
+
+- menghitung turunan numerik yang dipakai di Newton iteration satu variabel.
+
+Output dipakai untuk:
+
+- update `y` di `FindFYZero`.
+
+## 8. Ringkasan Fungsi Tiap Module
 
 Kalau diringkas paling singkat:
 
@@ -2568,7 +3433,7 @@ Kalau diringkas paling singkat:
 5. `Matrix Solver`: menyelesaikan sistem linear sparse untuk koreksi Newton.
 6. `Matrix 1`: utility korelasi `z-factor` gas.
 
-## 8. Flow Kerja Lengkap dari 6 Module
+## 9. Flow Kerja Lengkap dari 6 Module
 
 Supaya kebayang end-to-end, alurnya begini:
 
@@ -2606,7 +3471,7 @@ Loop time step:
       -> MakeReport
 ```
 
-## 9. Catatan Penting Saat Membaca VBA Ini
+## 10. Catatan Penting Saat Membaca VBA Ini
 
 Beberapa bagian tampak jelas sebagai versi latihan, prototipe, atau belum final. Ini penting supaya kamu tidak menganggap semua barisnya sudah final secara fisik maupun numerik.
 
@@ -2627,7 +3492,7 @@ Jadi cara membaca VBA ini yang paling aman adalah:
 - struktur solver-nya sangat jelas,
 - tetapi beberapa detail implementasi harus dianggap sebagai prototype, bukan final production code.
 
-## 10. Inti yang Harus Kamu Pegang
+## 11. Inti yang Harus Kamu Pegang
 
 Kalau semua isi dokumen ini diperas jadi inti paling penting, maka gambarnya seperti ini:
 
