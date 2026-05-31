@@ -9,6 +9,8 @@ class StepSummary:
 	newton_iterations: int = 0
 	max_residual: float = 0.0
 	converged: bool = False
+	step_duration_seconds: float = 0.0
+	retry_count: int = 0
 
 
 @dataclass(slots=True)

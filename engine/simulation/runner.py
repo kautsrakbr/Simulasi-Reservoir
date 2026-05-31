@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from time import perf_counter
+
 from engine.domain.grid import GridModel
 from engine.domain.project import ProjectConfig
 from engine.domain.results import RunResult, StepAttempt, TimeStepResult
@@ -26,6 +29,21 @@ def _copy_state(state: ReservoirState) -> ReservoirState:
 
 def _clamp(value: float, low: float, high: float) -> float:
 	return max(low, min(high, value))
+
+
+def _emit_progress(progress_callback: Callable[[str], None] | None, message: str) -> None:
+	if progress_callback is not None:
+		try:
+			progress_callback(message)
+		except RuntimeError:
+			# Callback target (typically UI object) may be destroyed during shutdown.
+			return
+
+
+def _is_cancelled(should_cancel: Callable[[], bool] | None) -> bool:
+	if should_cancel is None:
+		return False
+	return should_cancel()
 
 
 def _compute_mean_transmissibility(grid_model: GridModel) -> float:
@@ -145,11 +163,17 @@ def _initialize_iteration_state(previous_state: ReservoirState) -> ReservoirStat
 	return ReservoirState(pressure=pressure, sw=list(previous_state.sw), sg=list(previous_state.sg))
 
 
-def run_simulation(project_config: ProjectConfig) -> RunResult:
+def run_simulation(
+	project_config: ProjectConfig,
+	*,
+	progress_callback: Callable[[str], None] | None = None,
+	should_cancel: Callable[[], bool] | None = None,
+) -> RunResult:
 	grid_model = build_grid(project_config)
 	committed_state = initialize_state(project_config, grid_model)
 	update_grid_transmissibility(grid_model)
 	mean_transmissibility = _compute_mean_transmissibility(grid_model)
+	_emit_progress(progress_callback, "Grid, initial state, dan transmissibility siap.")
 
 	time_days = 0.0
 	dt_days = max(project_config.solver.initial_timestep_days, 1e-6)
@@ -163,6 +187,11 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 	growth_factor = max(project_config.solver.timestep_growth_factor, 1.0)
 
 	while time_days < max_time_days - 1e-12:
+		if _is_cancelled(should_cancel):
+			warnings.append("Simulasi dibatalkan oleh user.")
+			_emit_progress(progress_callback, "Run dibatalkan oleh user.")
+			return build_run_result(case_name=project_config.run.case_name, steps=steps, warnings=warnings)
+
 		step_guard += 1
 		if step_guard > 1000:
 			warnings.append("Loop timestep dihentikan karena melewati batas safety guard.")
@@ -172,9 +201,17 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 		trial_dt = min(dt_days, remaining_time)
 		accepted = False
 		step_attempts: list[StepAttempt] = []
+		step_started_at = perf_counter()
 
 		for retry_index in range(max_step_retries + 1):
 			next_time_days = time_days + trial_dt
+			_emit_progress(
+				progress_callback,
+				(
+					f"Step {step_guard} attempt {retry_index + 1}: "
+					f"target_t={next_time_days:.2f} hari, dt={trial_dt:.4f}"
+				),
+			)
 			step_result, next_state, converged, residual_norm = run_timestep(
 				project_config,
 				grid_model,
@@ -182,6 +219,9 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 				trial_dt,
 				next_time_days,
 				mean_transmissibility,
+				progress_callback=progress_callback,
+				should_cancel=should_cancel,
+				step_index=step_guard,
 			)
 			step_attempts.append(
 				StepAttempt(
@@ -197,20 +237,44 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 			step_result.attempts = list(step_attempts)
 
 			if converged:
+				elapsed_seconds = perf_counter() - step_started_at
 				steps.append(step_result)
 				committed_state = commit_timestep_state(next_state)
 				time_days = accept_timestep(time_days, trial_dt)
 				dt_days = update_timestep(trial_dt, growth_factor=growth_factor)
+				step_result.summary.step_duration_seconds = elapsed_seconds
+				step_result.summary.retry_count = max(len(step_attempts) - 1, 0)
+				_emit_progress(
+					progress_callback,
+					(
+						f"Step {step_guard} accepted: time={time_days:.2f} hari, "
+						f"next_dt={dt_days:.4f}, max_residual={step_result.summary.max_residual:.6f}"
+					),
+				)
 				accepted = True
 				break
+
+			if _is_cancelled(should_cancel):
+				elapsed_seconds = perf_counter() - step_started_at
+				if step_result.attempts:
+					step_result.attempts[-1].note = "cancelled"
+				step_result.summary.step_duration_seconds = elapsed_seconds
+				step_result.summary.retry_count = max(len(step_attempts) - 1, 0)
+				steps.append(step_result)
+				warnings.append("Simulasi dibatalkan oleh user.")
+				_emit_progress(progress_callback, "Run dibatalkan oleh user.")
+				return build_run_result(case_name=project_config.run.case_name, steps=steps, warnings=warnings)
 
 			reduced_dt = reject_timestep(trial_dt, shrink_factor=shrink_factor)
 			warnings.append(
 				f"Step t={next_time_days:.2f} hari gagal konvergen pada dt={trial_dt:.4f}; retry dengan dt={reduced_dt:.4f}."
 			)
 			if retry_index >= max_step_retries or reduced_dt < min_dt_days:
+				elapsed_seconds = perf_counter() - step_started_at
 				if step_result.attempts:
 					step_result.attempts[-1].note = "abort-min-dt"
+				step_result.summary.step_duration_seconds = elapsed_seconds
+				step_result.summary.retry_count = max(len(step_attempts) - 1, 0)
 				steps.append(step_result)
 				warnings.append(
 					"Simulasi dihentikan karena step tidak konvergen dan dt minimum tercapai."
@@ -221,10 +285,15 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 					warnings=warnings,
 				)
 			trial_dt = min(reduced_dt, remaining_time)
+			_emit_progress(
+				progress_callback,
+				f"Step {step_guard} retry: dt diperkecil menjadi {trial_dt:.4f} hari.",
+			)
 
 		if not accepted:
 			break
 
+	_emit_progress(progress_callback, "Loop time-step selesai.")
 	return build_run_result(case_name=project_config.run.case_name, steps=steps, warnings=warnings)
 
 
@@ -235,6 +304,10 @@ def run_timestep(
 	dt_days: float,
 	time_days: float,
 	mean_transmissibility: float,
+ 	*,
+	progress_callback: Callable[[str], None] | None = None,
+	should_cancel: Callable[[], bool] | None = None,
+	step_index: int = 0,
 ) -> tuple[TimeStepResult, ReservoirState, bool, float]:
 	working_state = _initialize_iteration_state(previous_state)
 	max_iterations = max(1, project_config.solver.max_newton_iterations)
@@ -245,7 +318,17 @@ def run_timestep(
 	converged = False
 
 	for iteration in range(1, max_iterations + 1):
+		if _is_cancelled(should_cancel):
+			_emit_progress(
+				progress_callback,
+				f"Step {step_index} dihentikan saat Newton iteration {iteration} karena cancel user.",
+			)
+			break
 		used_iterations = iteration
+		_emit_progress(
+			progress_callback,
+			f"Step {step_index} Newton iteration {iteration}/{max_iterations}.",
+		)
 		final_diagnostics = _compute_step_diagnostics(
 			project_config,
 			grid_model,

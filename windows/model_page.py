@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QSpinBox, QWidget
+from PySide6.QtWidgets import (
+	QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
+	QLabel, QLineEdit, QScrollArea, QSpinBox, QVBoxLayout, QWidget,
+)
 
 from engine.domain.project import ProjectConfig
 
@@ -51,7 +54,6 @@ class ModelPage(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 
-		layout = QFormLayout(self)
 		self.name_input = QLineEdit(self)
 		self.description_input = QLineEdit(self)
 		self.case_name_input = QLineEdit(self)
@@ -113,26 +115,76 @@ class ModelPage(QWidget):
 		self.solver_preset_picker = QComboBox(self)
 		self.solver_preset_picker.addItems(["Stable", "Balanced", "Fast"])
 
-		layout.addRow("Project Name", self.name_input)
-		layout.addRow("Description", self.description_input)
-		layout.addRow("Case Name", self.case_name_input)
-		layout.addRow("Solver Preset (active)", self.solver_preset_input)
-		layout.addRow("Apply Preset", self.solver_preset_picker)
-		layout.addRow("Reference Pressure", self.reference_pressure_input)
-		layout.addRow("Initial Timestep (days)", self.initial_timestep_input)
-		layout.addRow("Min Timestep (days)", self.min_timestep_input)
-		layout.addRow("Max Time (days)", self.max_time_input)
-		layout.addRow("Timestep Growth Factor", self.timestep_growth_factor_input)
-		layout.addRow("Timestep Shrink Factor", self.timestep_shrink_factor_input)
-		layout.addRow("Max Step Retries", self.max_step_retries_input)
-		layout.addRow("Max Newton Iterations", self.max_newton_iterations_input)
-		layout.addRow("Residual Tolerance", self.residual_tolerance_input)
-		layout.addRow("Residual Norm Floor", self.residual_norm_floor_input)
-		layout.addRow("Parameter Tolerance", self.parameter_tolerance_input)
-		layout.addRow("Newton Pressure Damping", self.newton_pressure_damping_input)
-		layout.addRow("Newton Saturation Damping", self.newton_saturation_damping_input)
-		layout.addRow("Max Pressure Correction", self.max_pressure_correction_input)
-		layout.addRow("Max Saturation Correction", self.max_saturation_correction_input)
+		# ── Build QScrollArea + QGroupBox layout ─────────────────────
+		outer = QVBoxLayout(self)
+		outer.setContentsMargins(24, 20, 24, 20)
+		outer.setSpacing(12)
+
+		_title = QLabel("Model & Solver")
+		_title.setObjectName("pageTitle")
+		outer.addWidget(_title)
+
+		scroll = QScrollArea()
+		scroll.setWidgetResizable(True)
+		scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+		_container = QWidget()
+		_c = QVBoxLayout(_container)
+		_c.setContentsMargins(0, 0, 0, 0)
+		_c.setSpacing(14)
+
+		# Project Info
+		_grp1 = QGroupBox("Project Info")
+		_f1 = QFormLayout(_grp1)
+		_f1.setSpacing(8)
+		_f1.addRow("Project Name", self.name_input)
+		_f1.addRow("Description", self.description_input)
+		_f1.addRow("Case Name", self.case_name_input)
+		_c.addWidget(_grp1)
+
+		# Reference Data
+		_grp2 = QGroupBox("Reference Data")
+		_f2 = QFormLayout(_grp2)
+		_f2.setSpacing(8)
+		_f2.addRow("Reference Pressure (psi)", self.reference_pressure_input)
+		_c.addWidget(_grp2)
+
+		# Solver Preset
+		_grp3 = QGroupBox("Solver Preset")
+		_f3 = QFormLayout(_grp3)
+		_f3.setSpacing(8)
+		_f3.addRow("Active Preset", self.solver_preset_input)
+		_f3.addRow("Apply Preset", self.solver_preset_picker)
+		_c.addWidget(_grp3)
+
+		# Time Step Control
+		_grp4 = QGroupBox("Time Step Control")
+		_f4 = QFormLayout(_grp4)
+		_f4.setSpacing(8)
+		_f4.addRow("Initial Timestep (days)", self.initial_timestep_input)
+		_f4.addRow("Min Timestep (days)", self.min_timestep_input)
+		_f4.addRow("Max Time (days)", self.max_time_input)
+		_f4.addRow("Timestep Growth Factor", self.timestep_growth_factor_input)
+		_f4.addRow("Timestep Shrink Factor", self.timestep_shrink_factor_input)
+		_f4.addRow("Max Step Retries", self.max_step_retries_input)
+		_c.addWidget(_grp4)
+
+		# Newton Solver
+		_grp5 = QGroupBox("Newton Solver")
+		_f5 = QFormLayout(_grp5)
+		_f5.setSpacing(8)
+		_f5.addRow("Max Newton Iterations", self.max_newton_iterations_input)
+		_f5.addRow("Residual Tolerance", self.residual_tolerance_input)
+		_f5.addRow("Residual Norm Floor", self.residual_norm_floor_input)
+		_f5.addRow("Parameter Tolerance", self.parameter_tolerance_input)
+		_f5.addRow("Pressure Damping", self.newton_pressure_damping_input)
+		_f5.addRow("Saturation Damping", self.newton_saturation_damping_input)
+		_f5.addRow("Max Pressure Correction", self.max_pressure_correction_input)
+		_f5.addRow("Max Saturation Correction", self.max_saturation_correction_input)
+		_c.addWidget(_grp5)
+		_c.addStretch(1)
+
+		scroll.setWidget(_container)
+		outer.addWidget(scroll, 1)
 
 		self.name_input.editingFinished.connect(self._emit_change)
 		self.description_input.editingFinished.connect(self._emit_change)
