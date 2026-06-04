@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from engine.domain.project import ProjectConfig
@@ -30,7 +31,7 @@ def create_empty_project(name: str = "CoreReservoir") -> ProjectConfig:
 	project.solver.max_step_retries = 8
 	project.solver.max_newton_iterations = 10
 	project.solver.residual_tolerance = 1e-4
-	project.solver.parameter_tolerance = 1e-6
+	project.solver.parameter_tolerance = 1e-4
 	project.solver.residual_norm_floor = 0.1
 	project.solver.newton_pressure_damping = 0.7
 	project.solver.newton_saturation_damping = 0.7
@@ -163,10 +164,179 @@ def load_example_pvt_tables(project_config: ProjectConfig) -> ProjectConfig:
 	return project_config
 
 
+def import_pvt_tables_from_file(project_config: ProjectConfig, file_path: str | Path) -> ProjectConfig:
+	path = Path(file_path)
+	if not path.exists():
+		raise ValueError(f"File tidak ditemukan: {path}")
+
+	suffix = path.suffix.lower()
+	if suffix == ".csv":
+		rows = _read_rows_from_csv(path)
+	elif suffix in {".xlsx", ".xlsm", ".xltx", ".xltm", ".xls"}:
+		rows = _read_rows_from_excel(path)
+	else:
+		raise ValueError("Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls")
+
+	tables = _rows_to_pvt_tables(rows)
+	if not tables:
+		raise ValueError("Tidak ada data PVT valid yang bisa di-import.")
+
+	project_config.pvt_tables = tables
+	project_config.is_dirty = True
+	return project_config
+
+
 def clear_pvt_tables(project_config: ProjectConfig) -> ProjectConfig:
 	project_config.pvt_tables.clear()
 	project_config.is_dirty = True
 	return project_config
+
+
+def _read_rows_from_csv(path: Path) -> list[dict[str, object]]:
+	with path.open("r", encoding="utf-8-sig", newline="") as handle:
+		reader = csv.DictReader(handle)
+		if not reader.fieldnames:
+			raise ValueError("Header CSV kosong.")
+		rows: list[dict[str, object]] = []
+		for raw_row in reader:
+			row: dict[str, object] = {}
+			for key, value in raw_row.items():
+				if key is None:
+					continue
+				row[_norm_col_name(key)] = "" if value is None else str(value).strip()
+			if any(str(v).strip() for v in row.values()):
+				rows.append(row)
+		return rows
+
+
+def _read_rows_from_excel(path: Path) -> list[dict[str, object]]:
+	if path.suffix.lower() != ".xls":
+		try:
+			from openpyxl import load_workbook
+		except ImportError:
+			load_workbook = None
+		if load_workbook is not None:
+			wb = load_workbook(path, read_only=True, data_only=True)
+			ws = wb.active
+			rows_iter = ws.iter_rows(values_only=True)
+			headers_raw = next(rows_iter, None)
+			if headers_raw is None:
+				raise ValueError("Sheet Excel kosong.")
+			headers = [_norm_col_name(h) for h in headers_raw]
+			rows: list[dict[str, object]] = []
+			for excel_row in rows_iter:
+				row: dict[str, object] = {}
+				for idx, cell_value in enumerate(excel_row):
+					if idx >= len(headers):
+						continue
+					col_name = headers[idx]
+					if not col_name:
+						continue
+					row[col_name] = "" if cell_value is None else cell_value
+				if any(str(v).strip() for v in row.values()):
+					rows.append(row)
+			return rows
+
+	# Fallback for .xls or when openpyxl is not available
+	try:
+		import pandas as pd
+	except ImportError as exc:
+		raise ValueError(
+			"Import Excel butuh package tambahan. Install openpyxl (untuk .xlsx) atau pandas/xlrd (untuk .xls)."
+		) from exc
+
+	df = pd.read_excel(path)
+	rows = []
+	for row_dict in df.to_dict(orient="records"):
+		row: dict[str, object] = {}
+		for key, value in row_dict.items():
+			if key is None:
+				continue
+			norm_key = _norm_col_name(str(key))
+			if value is None:
+				row[norm_key] = ""
+			elif isinstance(value, float) and str(value) == "nan":
+				row[norm_key] = ""
+			else:
+				row[norm_key] = value
+		if any(str(v).strip() for v in row.values()):
+			rows.append(row)
+	return rows
+
+
+def _rows_to_pvt_tables(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	if not rows:
+		return {}
+
+	cols = set(rows[0].keys())
+	long_mode = ({"table", "pressure", "value"} <= cols)
+	wide_keys = {"bo", "bw", "bg", "mu_o", "mu_w", "mu_g", "rso", "rsw"}
+	wide_mode = ("pressure" in cols and bool(wide_keys & cols))
+
+	if long_mode:
+		return _parse_long_rows(rows)
+	if wide_mode:
+		return _parse_wide_rows(rows)
+
+	raise ValueError(
+		"Format kolom tidak dikenali. Gunakan format long: table,pressure,value "
+		"atau format wide: pressure,bo,bw,bg,mu_o,mu_w,mu_g,rso,rsw"
+	)
+
+
+def _parse_long_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	tables: dict[str, list[tuple[float, float]]] = {}
+	for i, row in enumerate(rows, start=2):
+		table_name = str(row.get("table", "")).strip().lower()
+		if not table_name:
+			raise ValueError(f"Kolom table kosong pada baris {i}.")
+		pressure = _to_float(row.get("pressure"), "pressure", i)
+		value = _to_float(row.get("value"), "value", i)
+		tables.setdefault(table_name, []).append((pressure, value))
+
+	for pairs in tables.values():
+		pairs.sort(key=lambda item: item[0])
+	return tables
+
+
+def _parse_wide_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	tables: dict[str, list[tuple[float, float]]] = {}
+	ordered_tables = ["bo", "bw", "bg", "mu_o", "mu_w", "mu_g", "rso", "rsw"]
+
+	for i, row in enumerate(rows, start=2):
+		pressure = _to_float(row.get("pressure"), "pressure", i)
+		for table_name in ordered_tables:
+			raw_val = row.get(table_name)
+			if raw_val is None or str(raw_val).strip() == "":
+				continue
+			value = _to_float(raw_val, table_name, i)
+			tables.setdefault(table_name, []).append((pressure, value))
+
+	for pairs in tables.values():
+		pairs.sort(key=lambda item: item[0])
+	return tables
+
+
+def _to_float(raw_value: object, col_name: str, row_number: int) -> float:
+	if raw_value is None:
+		raise ValueError(f"Nilai kosong pada kolom {col_name}, baris {row_number}.")
+	text = str(raw_value).strip()
+	if not text:
+		raise ValueError(f"Nilai kosong pada kolom {col_name}, baris {row_number}.")
+	# Support decimal commas from spreadsheets.
+	if "," in text and "." not in text:
+		text = text.replace(",", ".")
+	try:
+		return float(text)
+	except ValueError as exc:
+		raise ValueError(f"Nilai tidak valid pada kolom {col_name}, baris {row_number}: {raw_value}") from exc
+
+
+def _norm_col_name(name: object) -> str:
+	text = "" if name is None else str(name).strip().lower()
+	text = text.replace(" ", "_")
+	text = text.replace("-", "_")
+	return text
 
 
 def load_example_rock_tables(project_config: ProjectConfig) -> ProjectConfig:

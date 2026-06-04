@@ -1,9 +1,28 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtWidgets import QDoubleSpinBox, QFormLayout, QSpinBox, QWidget
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import (
+	QDoubleSpinBox,
+	QFormLayout,
+	QFrame,
+	QGroupBox,
+	QHBoxLayout,
+	QLabel,
+	QSpinBox,
+	QVBoxLayout,
+	QWidget,
+)
 
 from engine.domain.project import ProjectConfig
+
+
+def _form(parent: QWidget | None = None) -> QFormLayout:
+	f = QFormLayout(parent)
+	f.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+	f.setHorizontalSpacing(14)
+	f.setVerticalSpacing(8)
+	f.setContentsMargins(10, 10, 10, 10)
+	return f
 
 
 class GridPage(QWidget):
@@ -12,37 +31,68 @@ class GridPage(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 
-		layout = QFormLayout(self)
-		self.nx_input = QSpinBox(self)
-		self.ny_input = QSpinBox(self)
-		self.nz_input = QSpinBox(self)
-		self.dx_input = QDoubleSpinBox(self)
-		self.dy_input = QDoubleSpinBox(self)
-		self.dz_input = QDoubleSpinBox(self)
+		outer = QVBoxLayout(self)
+		outer.setSpacing(8)
+		outer.setContentsMargins(14, 14, 14, 14)
 
-		for spin_box in (self.nx_input, self.ny_input, self.nz_input):
-			spin_box.setMinimum(1)
-			spin_box.setMaximum(1_000)
+		# ── Page header ───────────────────────────────────────────────
+		hdr = QHBoxLayout()
+		title = QLabel("Grid Reservoir")
+		title.setObjectName("pageTitle")
+		hdr.addWidget(title)
+		hdr.addStretch()
+		outer.addLayout(hdr)
 
-		for spin_box in (self.dx_input, self.dy_input, self.dz_input):
-			spin_box.setMinimum(0.01)
-			spin_box.setMaximum(1_000_000.0)
-			spin_box.setDecimals(3)
-			spin_box.setValue(1.0)
+		sep = QFrame()
+		sep.setFrameShape(QFrame.Shape.HLine)
+		sep.setObjectName("pageDivider")
+		outer.addWidget(sep)
 
-		layout.addRow("NX", self.nx_input)
-		layout.addRow("NY", self.ny_input)
-		layout.addRow("NZ", self.nz_input)
-		layout.addRow("DX", self.dx_input)
-		layout.addRow("DY", self.dy_input)
-		layout.addRow("DZ", self.dz_input)
+		# ── Group: Grid Dimensions ────────────────────────────────────
+		grp_dims = QGroupBox("Dimensi Grid (Jumlah Cell)")
+		frm_dims = _form(grp_dims)
+		self.nx_input = QSpinBox()
+		self.ny_input = QSpinBox()
+		self.nz_input = QSpinBox()
+		for sb in (self.nx_input, self.ny_input, self.nz_input):
+			sb.setRange(1, 1_000)
+		frm_dims.addRow("NX  (arah X)", self.nx_input)
+		frm_dims.addRow("NY  (arah Y)", self.ny_input)
+		frm_dims.addRow("NZ  (arah Z)", self.nz_input)
+		outer.addWidget(grp_dims)
 
+		# ── Group: Cell Size ──────────────────────────────────────────
+		grp_size = QGroupBox("Ukuran Cell")
+		frm_size = _form(grp_size)
+		self.dx_input = QDoubleSpinBox()
+		self.dy_input = QDoubleSpinBox()
+		self.dz_input = QDoubleSpinBox()
+		for sb in (self.dx_input, self.dy_input, self.dz_input):
+			sb.setRange(0.01, 1_000_000.0)
+			sb.setDecimals(3)
+			sb.setValue(1.0)
+		frm_size.addRow("DX  (ft)", self.dx_input)
+		frm_size.addRow("DY  (ft)", self.dy_input)
+		frm_size.addRow("DZ  (ft)", self.dz_input)
+		outer.addWidget(grp_size)
+
+		# ── Grid summary info ─────────────────────────────────────────
+		self._summary_label = QLabel()
+		self._summary_label.setObjectName("pageHintLabel")
+		self._summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+		outer.addWidget(self._summary_label)
+
+		outer.addStretch()
+
+		# ── Wire signals ──────────────────────────────────────────────
 		self.nx_input.valueChanged.connect(self._emit_change)
 		self.ny_input.valueChanged.connect(self._emit_change)
 		self.nz_input.valueChanged.connect(self._emit_change)
 		self.dx_input.valueChanged.connect(self._emit_change)
 		self.dy_input.valueChanged.connect(self._emit_change)
 		self.dz_input.valueChanged.connect(self._emit_change)
+
+		self._update_summary()
 
 	def set_project(self, project_config: ProjectConfig) -> None:
 		blockers = [
@@ -60,8 +110,10 @@ class GridPage(QWidget):
 		self.dy_input.setValue(project_config.grid_spec.dy)
 		self.dz_input.setValue(project_config.grid_spec.dz)
 		del blockers
+		self._update_summary()
 
 	def _emit_change(self) -> None:
+		self._update_summary()
 		self.gridChanged.emit(
 			self.nx_input.value(),
 			self.ny_input.value(),
@@ -69,4 +121,14 @@ class GridPage(QWidget):
 			self.dx_input.value(),
 			self.dy_input.value(),
 			self.dz_input.value(),
+		)
+
+	def _update_summary(self) -> None:
+		nx, ny, nz = self.nx_input.value(), self.ny_input.value(), self.nz_input.value()
+		dx, dy, dz = self.dx_input.value(), self.dy_input.value(), self.dz_input.value()
+		total_cells = nx * ny * nz
+		lx, ly, lz = nx * dx, ny * dy, nz * dz
+		self._summary_label.setText(
+			f"{nx} × {ny} × {nz} = {total_cells:,} sel  |  "
+			f"{lx:,.1f} × {ly:,.1f} × {lz:,.1f} ft"
 		)

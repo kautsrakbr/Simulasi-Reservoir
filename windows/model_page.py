@@ -1,9 +1,31 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QLineEdit, QSpinBox, QWidget
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import (
+	QComboBox,
+	QDoubleSpinBox,
+	QFormLayout,
+	QFrame,
+	QGroupBox,
+	QHBoxLayout,
+	QLabel,
+	QLineEdit,
+	QScrollArea,
+	QSpinBox,
+	QVBoxLayout,
+	QWidget,
+)
 
 from engine.domain.project import ProjectConfig
+
+
+def _form(parent: QWidget | None = None) -> QFormLayout:
+	f = QFormLayout(parent)
+	f.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+	f.setHorizontalSpacing(14)
+	f.setVerticalSpacing(8)
+	f.setContentsMargins(10, 10, 10, 10)
+	return f
 
 
 class ModelPage(QWidget):
@@ -51,89 +73,142 @@ class ModelPage(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 
-		layout = QFormLayout(self)
-		self.name_input = QLineEdit(self)
-		self.description_input = QLineEdit(self)
-		self.case_name_input = QLineEdit(self)
-		self.solver_preset_input = QLineEdit(self)
-		self.solver_preset_input.setReadOnly(True)
-		self.solver_preset_input.setText("Custom")
-		self.reference_pressure_input = QDoubleSpinBox(self)
+		outer = QVBoxLayout(self)
+		outer.setSpacing(8)
+		outer.setContentsMargins(14, 14, 14, 14)
+
+		# ── Page header ───────────────────────────────────────────────
+		hdr = QHBoxLayout()
+		title = QLabel("Model & Solver")
+		title.setObjectName("pageTitle")
+		hdr.addWidget(title)
+		hdr.addStretch()
+		outer.addLayout(hdr)
+
+		sep = QFrame()
+		sep.setFrameShape(QFrame.Shape.HLine)
+		sep.setObjectName("pageDivider")
+		outer.addWidget(sep)
+
+		# ── Scroll container ──────────────────────────────────────────
+		scroll = QScrollArea()
+		scroll.setWidgetResizable(True)
+		scroll.setFrameShape(QFrame.Shape.NoFrame)
+		inner = QWidget()
+		col = QVBoxLayout(inner)
+		col.setSpacing(12)
+		col.setContentsMargins(0, 4, 4, 4)
+		scroll.setWidget(inner)
+		outer.addWidget(scroll, stretch=1)
+
+		# ── Group: Project Info ───────────────────────────────────────
+		grp_proj = QGroupBox("Project Info")
+		frm_proj = _form(grp_proj)
+		self.name_input = QLineEdit()
+		self.description_input = QLineEdit()
+		self.case_name_input = QLineEdit()
+		frm_proj.addRow("Nama Project", self.name_input)
+		frm_proj.addRow("Deskripsi", self.description_input)
+		frm_proj.addRow("Nama Case", self.case_name_input)
+		col.addWidget(grp_proj)
+
+		# ── Group: Simulation Timing ──────────────────────────────────
+		grp_timing = QGroupBox("Simulasi Timing")
+		frm_timing = _form(grp_timing)
+		self.reference_pressure_input = QDoubleSpinBox()
 		self.reference_pressure_input.setDecimals(2)
 		self.reference_pressure_input.setMaximum(1_000_000.0)
-		self.initial_timestep_input = QDoubleSpinBox(self)
+		self.initial_timestep_input = QDoubleSpinBox()
 		self.initial_timestep_input.setDecimals(4)
 		self.initial_timestep_input.setRange(0.0001, 3650.0)
-		self.min_timestep_input = QDoubleSpinBox(self)
+		self.min_timestep_input = QDoubleSpinBox()
 		self.min_timestep_input.setDecimals(6)
 		self.min_timestep_input.setRange(0.000001, 3650.0)
-		self.max_time_input = QDoubleSpinBox(self)
+		self.max_time_input = QDoubleSpinBox()
 		self.max_time_input.setDecimals(4)
 		self.max_time_input.setRange(0.0001, 36500.0)
-		self.timestep_growth_factor_input = QDoubleSpinBox(self)
+		frm_timing.addRow("Tekanan Referensi (psi)", self.reference_pressure_input)
+		frm_timing.addRow("Timestep Awal (hari)", self.initial_timestep_input)
+		frm_timing.addRow("Timestep Minimum (hari)", self.min_timestep_input)
+		frm_timing.addRow("Waktu Maks Simulasi (hari)", self.max_time_input)
+		col.addWidget(grp_timing)
+
+		# ── Group: Solver Preset & Timestep Control ───────────────────
+		grp_preset = QGroupBox("Solver Preset & Kontrol Timestep")
+		frm_preset = _form(grp_preset)
+		self.solver_preset_input = QLineEdit()
+		self.solver_preset_input.setReadOnly(True)
+		self.solver_preset_input.setText("Custom")
+		self.solver_preset_picker = QComboBox()
+		self.solver_preset_picker.addItems(["Stable", "Balanced", "Fast"])
+		self.timestep_growth_factor_input = QDoubleSpinBox()
 		self.timestep_growth_factor_input.setDecimals(4)
 		self.timestep_growth_factor_input.setRange(1.0, 5.0)
 		self.timestep_growth_factor_input.setSingleStep(0.05)
-		self.timestep_shrink_factor_input = QDoubleSpinBox(self)
+		self.timestep_shrink_factor_input = QDoubleSpinBox()
 		self.timestep_shrink_factor_input.setDecimals(4)
 		self.timestep_shrink_factor_input.setRange(0.05, 0.95)
 		self.timestep_shrink_factor_input.setSingleStep(0.05)
-		self.max_newton_iterations_input = QSpinBox(self)
-		self.max_newton_iterations_input.setRange(1, 200)
-		self.max_step_retries_input = QSpinBox(self)
+		self.max_step_retries_input = QSpinBox()
 		self.max_step_retries_input.setRange(0, 100)
-		self.residual_tolerance_input = QDoubleSpinBox(self)
+		frm_preset.addRow("Preset Aktif", self.solver_preset_input)
+		frm_preset.addRow("Terapkan Preset", self.solver_preset_picker)
+		frm_preset.addRow("Faktor Pertumbuhan dt", self.timestep_growth_factor_input)
+		frm_preset.addRow("Faktor Penyusutan dt", self.timestep_shrink_factor_input)
+		frm_preset.addRow("Maks Retry Timestep", self.max_step_retries_input)
+		col.addWidget(grp_preset)
+
+		# ── Group: Newton Convergence ─────────────────────────────────
+		grp_newton = QGroupBox("Newton & Konvergensi")
+		frm_newton = _form(grp_newton)
+		self.max_newton_iterations_input = QSpinBox()
+		self.max_newton_iterations_input.setRange(1, 200)
+		self.residual_tolerance_input = QDoubleSpinBox()
 		self.residual_tolerance_input.setDecimals(10)
-		self.residual_tolerance_input.setRange(0.0000000001, 1.0)
-		self.residual_tolerance_input.setSingleStep(0.000001)
-		self.residual_norm_floor_input = QDoubleSpinBox(self)
+		self.residual_tolerance_input.setRange(1e-10, 1.0)
+		self.residual_tolerance_input.setSingleStep(1e-6)
+		self.residual_norm_floor_input = QDoubleSpinBox()
 		self.residual_norm_floor_input.setDecimals(6)
-		self.residual_norm_floor_input.setRange(0.000001, 1.0)
+		self.residual_norm_floor_input.setRange(1e-6, 1.0)
 		self.residual_norm_floor_input.setSingleStep(0.01)
-		self.parameter_tolerance_input = QDoubleSpinBox(self)
+		self.parameter_tolerance_input = QDoubleSpinBox()
 		self.parameter_tolerance_input.setDecimals(10)
-		self.parameter_tolerance_input.setRange(0.0000000001, 1.0)
-		self.parameter_tolerance_input.setSingleStep(0.000001)
-		self.newton_pressure_damping_input = QDoubleSpinBox(self)
+		self.parameter_tolerance_input.setRange(1e-10, 1.0)
+		self.parameter_tolerance_input.setSingleStep(1e-6)
+		frm_newton.addRow("Maks Iterasi Newton", self.max_newton_iterations_input)
+		frm_newton.addRow("Residual Tolerance", self.residual_tolerance_input)
+		frm_newton.addRow("Residual Norm Floor (target)", self.residual_norm_floor_input)
+		frm_newton.addRow("Parameter Tolerance (Δp, ΔS)", self.parameter_tolerance_input)
+		col.addWidget(grp_newton)
+
+		# ── Group: Damping & Correction Limits ───────────────────────
+		grp_damp = QGroupBox("Damping & Batas Koreksi Newton")
+		frm_damp = _form(grp_damp)
+		self.newton_pressure_damping_input = QDoubleSpinBox()
 		self.newton_pressure_damping_input.setDecimals(4)
 		self.newton_pressure_damping_input.setRange(0.05, 1.0)
 		self.newton_pressure_damping_input.setSingleStep(0.05)
-		self.newton_saturation_damping_input = QDoubleSpinBox(self)
+		self.newton_saturation_damping_input = QDoubleSpinBox()
 		self.newton_saturation_damping_input.setDecimals(4)
 		self.newton_saturation_damping_input.setRange(0.05, 1.0)
 		self.newton_saturation_damping_input.setSingleStep(0.05)
-		self.max_pressure_correction_input = QDoubleSpinBox(self)
+		self.max_pressure_correction_input = QDoubleSpinBox()
 		self.max_pressure_correction_input.setDecimals(4)
 		self.max_pressure_correction_input.setRange(0.01, 1_000_000.0)
 		self.max_pressure_correction_input.setSingleStep(1.0)
-		self.max_saturation_correction_input = QDoubleSpinBox(self)
+		self.max_saturation_correction_input = QDoubleSpinBox()
 		self.max_saturation_correction_input.setDecimals(6)
-		self.max_saturation_correction_input.setRange(0.000001, 1.0)
+		self.max_saturation_correction_input.setRange(1e-6, 1.0)
 		self.max_saturation_correction_input.setSingleStep(0.005)
-		self.solver_preset_picker = QComboBox(self)
-		self.solver_preset_picker.addItems(["Stable", "Balanced", "Fast"])
+		frm_damp.addRow("Damping Tekanan", self.newton_pressure_damping_input)
+		frm_damp.addRow("Damping Saturasi", self.newton_saturation_damping_input)
+		frm_damp.addRow("Maks Koreksi ΔP (psi)", self.max_pressure_correction_input)
+		frm_damp.addRow("Maks Koreksi ΔS", self.max_saturation_correction_input)
+		col.addWidget(grp_damp)
 
-		layout.addRow("Project Name", self.name_input)
-		layout.addRow("Description", self.description_input)
-		layout.addRow("Case Name", self.case_name_input)
-		layout.addRow("Solver Preset (active)", self.solver_preset_input)
-		layout.addRow("Apply Preset", self.solver_preset_picker)
-		layout.addRow("Reference Pressure", self.reference_pressure_input)
-		layout.addRow("Initial Timestep (days)", self.initial_timestep_input)
-		layout.addRow("Min Timestep (days)", self.min_timestep_input)
-		layout.addRow("Max Time (days)", self.max_time_input)
-		layout.addRow("Timestep Growth Factor", self.timestep_growth_factor_input)
-		layout.addRow("Timestep Shrink Factor", self.timestep_shrink_factor_input)
-		layout.addRow("Max Step Retries", self.max_step_retries_input)
-		layout.addRow("Max Newton Iterations", self.max_newton_iterations_input)
-		layout.addRow("Residual Tolerance", self.residual_tolerance_input)
-		layout.addRow("Residual Norm Floor", self.residual_norm_floor_input)
-		layout.addRow("Parameter Tolerance", self.parameter_tolerance_input)
-		layout.addRow("Newton Pressure Damping", self.newton_pressure_damping_input)
-		layout.addRow("Newton Saturation Damping", self.newton_saturation_damping_input)
-		layout.addRow("Max Pressure Correction", self.max_pressure_correction_input)
-		layout.addRow("Max Saturation Correction", self.max_saturation_correction_input)
+		col.addStretch()
 
+		# ── Wire signals ──────────────────────────────────────────────
 		self.name_input.editingFinished.connect(self._emit_change)
 		self.description_input.editingFinished.connect(self._emit_change)
 		self.case_name_input.editingFinished.connect(self._emit_change)

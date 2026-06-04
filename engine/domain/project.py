@@ -27,7 +27,7 @@ class SolverConfig:
 	max_step_retries: int = 8
 	max_newton_iterations: int = 10
 	residual_tolerance: float = 1e-6
-	parameter_tolerance: float = 1e-6
+	parameter_tolerance: float = 1e-4
 	residual_norm_floor: float = 0.1
 	newton_pressure_damping: float = 0.7
 	newton_saturation_damping: float = 0.7

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TypedDict
+
 from engine.domain.grid import GridModel
 from engine.domain.project import ProjectConfig
 from engine.domain.results import RunResult, StepAttempt, TimeStepResult
@@ -34,13 +36,36 @@ def _compute_mean_transmissibility(grid_model: GridModel) -> float:
 	return sum(connection.transmissibility for connection in grid_model.connections) / len(grid_model.connections)
 
 
+class _StepDiagnostics(TypedDict):
+	connection_fluxes: list[float]
+	net_flux: list[float]
+	phase_net_flux_oil: list[float]
+	phase_net_flux_water: list[float]
+	phase_net_flux_gas: list[float]
+	oil_residual_per_cell: list[float]
+	water_residual_per_cell: list[float]
+	gas_residual_per_cell: list[float]
+	max_oil_residual: float
+	max_water_residual: float
+	max_gas_residual: float
+	residual_vector: list[float]
+	accumulation_total: list[float]
+	residual_per_cell: list[float]
+	max_residual: float
+	max_residual_vector: float
+	max_connection_flux: float
+	max_abs_accumulation: float
+	residual_norm: float
+	residual_norm_vector: float
+
+
 def _compute_step_diagnostics(
 	project_config: ProjectConfig,
 	grid_model: GridModel,
 	previous_state: ReservoirState,
 	current_state: ReservoirState,
 	dt_days: float,
-) -> dict[str, float | list[float]]:
+) -> _StepDiagnostics:
 	phase_connection_fluxes = compute_phase_connection_fluxes(
 		grid_model,
 		current_state,
@@ -238,11 +263,15 @@ def run_timestep(
 ) -> tuple[TimeStepResult, ReservoirState, bool, float]:
 	working_state = _initialize_iteration_state(previous_state)
 	max_iterations = max(1, project_config.solver.max_newton_iterations)
-	convergence_target = max(project_config.solver.residual_tolerance, project_config.solver.residual_norm_floor)
+	# Criterion 1 target: max normalised per-phase residual < residual_norm_floor
+	residual_target = project_config.solver.residual_norm_floor
+	# Criterion 2 target: max relative pressure change and absolute sat change < parameter_tolerance
+	param_target = project_config.solver.parameter_tolerance
 
-	final_diagnostics: dict[str, float | list[float]] | None = None
+	final_diagnostics: _StepDiagnostics | None = None
 	used_iterations = 0
 	converged = False
+	prev_state_for_delta: ReservoirState | None = None
 
 	for iteration in range(1, max_iterations + 1):
 		used_iterations = iteration
@@ -253,9 +282,34 @@ def run_timestep(
 			working_state,
 			dt_days,
 		)
-		if float(final_diagnostics["residual_norm"]) <= convergence_target:
+
+		# ── Criterion 1: max normalised residual across all 3 phases ──────────
+		residual_ok = float(final_diagnostics["residual_norm_vector"]) <= residual_target
+
+		# ── Criterion 2: max parameter change vs previous Newton iterate ──────
+		if prev_state_for_delta is not None and working_state.pressure:
+			max_dp_rel = max(
+				abs(p1 - p0) / max(abs(p0), 1.0)
+				for p1, p0 in zip(working_state.pressure, prev_state_for_delta.pressure)
+			)
+			max_dsw = (
+				max(abs(s1 - s0) for s1, s0 in zip(working_state.sw, prev_state_for_delta.sw))
+				if working_state.sw else 0.0
+			)
+			max_dsg = (
+				max(abs(s1 - s0) for s1, s0 in zip(working_state.sg, prev_state_for_delta.sg))
+				if working_state.sg else 0.0
+			)
+			param_ok = max(max_dp_rel, max_dsw, max_dsg) <= param_target
+		else:
+			param_ok = False  # first iteration: no previous iterate to compare
+
+		if residual_ok and param_ok:
 			converged = True
 			break
+		# max iterations exhausted without both criteria met → converged stays False
+
+		prev_state_for_delta = _copy_state(working_state)
 
 		def _residual_evaluator(candidate_state: ReservoirState) -> list[float]:
 			candidate_diagnostics = _compute_step_diagnostics(
