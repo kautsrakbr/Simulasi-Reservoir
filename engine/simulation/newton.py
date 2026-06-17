@@ -10,10 +10,11 @@ def newton_step(
 	residual: list[float],
 	jacobian: list[list[float]],
 	solver_config: SolverConfig,
-) -> ReservoirState:
+) -> tuple[ReservoirState, list[float]]:
 	rhs = build_newton_rhs(residual)
 	correction = solve_linear_system(jacobian, rhs, solver_config)
-	return apply_newton_update(state_k, correction, solver_config)
+	return apply_newton_update(state_k, correction, solver_config), correction
+
 
 
 def build_newton_rhs(residual: list[float]) -> list[float]:

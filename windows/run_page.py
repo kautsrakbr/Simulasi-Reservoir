@@ -10,9 +10,13 @@ from PySide6.QtWidgets import (
 	QScrollArea,
 	QSizePolicy,
 	QTextEdit,
+	QTableWidget,
+	QTableWidgetItem,
+	QHeaderView,
 	QVBoxLayout,
 	QWidget,
 )
+from PySide6.QtGui import QFont, QColor, QBrush
 
 from engine.domain.project import ProjectConfig
 
@@ -24,7 +28,7 @@ class RunPage(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 
-		# ── Header bar ───────────────────────────────────────────────────────
+		# ── Header Bar ───────────────────────────────────────────────────────
 		self._header = QWidget(self)
 		self._header.setObjectName("dashHeader")
 		_hrow = QHBoxLayout(self._header)
@@ -48,7 +52,7 @@ class RunPage(QWidget):
 		_hrow.addWidget(self._run_btn)
 		_hrow.addWidget(self._stop_btn)
 
-		# ── Progress bar ─────────────────────────────────────────────────────
+		# ── Progress Bar ─────────────────────────────────────────────────────
 		self._progress = QProgressBar(self)
 		self._progress.setObjectName("runProgress")
 		self._progress.setRange(0, 0)   # indeterminate by default
@@ -56,24 +60,25 @@ class RunPage(QWidget):
 		self._progress.setTextVisible(False)
 		self._progress.setVisible(False)
 
-		# ── Info cards row ───────────────────────────────────────────────────
-		cards_row = QHBoxLayout()
-		cards_row.setSpacing(16)
-		cards_row.setContentsMargins(20, 16, 20, 0)
+		# ── Unified Control & Summary Panel (Technical summary table) ────────
+		self.table_summary = QTableWidget(1, 4)
+		self.table_summary.setHorizontalHeaderLabels(["Active Case", "Grid Dimensions", "Save State", "Validation Status"])
+		self.table_summary.verticalHeader().setVisible(False)
+		self.table_summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+		self.table_summary.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+		self.table_summary.setFixedHeight(72)
+		self.table_summary.setShowGrid(True)
+		
+		# Set blank items
+		for col in range(4):
+			self.table_summary.setItem(0, col, QTableWidgetItem("—"))
 
-		self._card_case  = self._make_card("Active Case")
-		self._lbl_case   = self._add_row(self._card_case, "Case", "—")
-		self._lbl_grid   = self._add_row(self._card_case, "Grid", "—")
-		self._lbl_state  = self._add_row(self._card_case, "State", "—")
+		top_container = QWidget(self)
+		top_lay = QVBoxLayout(top_container)
+		top_lay.setContentsMargins(20, 16, 20, 0)
+		top_lay.addWidget(self.table_summary)
 
-		self._card_valid = self._make_card("Validation")
-		self._lbl_status = self._add_row(self._card_valid, "Status", "—")
-		self._lbl_issues = self._add_row(self._card_valid, "Issues", "—")
-
-		cards_row.addWidget(self._card_case)
-		cards_row.addWidget(self._card_valid)
-
-		# ── Log output ───────────────────────────────────────────────────────
+		# ── Log Output Canvas ─────────────────────────────────────────────────
 		_log_header = QLabel("  Run Log", self)
 		_log_header.setObjectName("dashCardTitle")
 		_log_header.setContentsMargins(20, 10, 0, 4)
@@ -83,13 +88,13 @@ class RunPage(QWidget):
 		self._log.setReadOnly(True)
 		self._log.setPlaceholderText("Log simulasi akan muncul di sini saat run dimulai…")
 
-		# ── Root layout ──────────────────────────────────────────────────────
+		# ── Root Layout ──────────────────────────────────────────────────────
 		root = QVBoxLayout(self)
 		root.setContentsMargins(0, 0, 0, 0)
 		root.setSpacing(0)
 		root.addWidget(self._header)
 		root.addWidget(self._progress)
-		root.addLayout(cards_row)
+		root.addWidget(top_container)
 		root.addWidget(_log_header)
 		_log_wrap = QWidget(self)
 		_log_wrap.setObjectName("dashContent")
@@ -101,67 +106,36 @@ class RunPage(QWidget):
 		self._run_btn.clicked.connect(self.runRequested)
 		self._stop_btn.clicked.connect(self.cancelRequested)
 
-	# ── Card helpers ─────────────────────────────────────────────────────────
-	@staticmethod
-	def _make_card(title: str) -> QFrame:
-		card = QFrame()
-		card.setObjectName("dashCard")
-		card.setStyleSheet(
-			"QFrame#dashCard { background: #ffffff; border: 1px solid #dde6ee; "
-			"border-left: 4px solid #5b9ec9; border-radius: 6px; }"
-		)
-		lay = QVBoxLayout(card)
-		lay.setContentsMargins(14, 10, 14, 12)
-		lay.setSpacing(6)
-		lbl = QLabel(title.upper())
-		lbl.setObjectName("dashCardTitle")
-		sep = QFrame()
-		sep.setFrameShape(QFrame.Shape.HLine)
-		sep.setObjectName("dashCardSep")
-		lay.addWidget(lbl)
-		lay.addWidget(sep)
-		return card
-
-	@staticmethod
-	def _add_row(card: QFrame, label: str, value: str) -> QLabel:
-		row = QHBoxLayout()
-		row.setContentsMargins(0, 0, 0, 0)
-		lbl = QLabel(label)
-		lbl.setObjectName("dashRowLabel")
-		lbl.setFixedWidth(70)
-		val = QLabel(value)
-		val.setObjectName("dashRowValue")
-		val.setWordWrap(True)
-		row.addWidget(lbl)
-		row.addWidget(val, 1)
-		card.layout().addLayout(row)
-		return val
-
 	# ── Public API ────────────────────────────────────────────────────────────
 	def set_project_state(self, project_config: ProjectConfig, validation_errors: list[str]) -> None:
 		gs = project_config.grid_spec
 		cells = gs.nx * gs.ny * gs.nz
-		self._lbl_case.setText(project_config.run.case_name)
-		self._lbl_grid.setText(f"{gs.nx} × {gs.ny} × {gs.nz}  ({cells:,} sel)")
+		
+		# Set Case Item
+		self.table_summary.setItem(0, 0, QTableWidgetItem(project_config.run.case_name))
+		
+		# Set Grid Item
+		self.table_summary.setItem(0, 1, QTableWidgetItem(f"{gs.nx} × {gs.ny} × {gs.nz}  ({cells:,} sel)"))
+		
+		# Set State Item
 		if project_config.is_dirty:
-			self._lbl_state.setText("Dirty — run ulang disarankan")
-			self._lbl_state.setStyleSheet("color: #e6a817;")
+			item_state = QTableWidgetItem("Belum Disimpan")
+			item_state.setForeground(QBrush(QColor("#b45309")))
 		else:
-			self._lbl_state.setText("Clean")
-			self._lbl_state.setStyleSheet("color: #4caf7d;")
+			item_state = QTableWidgetItem("Up-to-date")
+			item_state.setForeground(QBrush(QColor("#059669")))
+		self.table_summary.setItem(0, 2, item_state)
 
+		# Set Validation Status Item
 		if validation_errors:
-			self._lbl_status.setText("Blocked")
-			self._lbl_status.setStyleSheet("color: #d9534f; font-weight: bold;")
-			self._lbl_issues.setText(" • " + "\n • ".join(validation_errors))
-			self._lbl_issues.setStyleSheet("color: #d9534f;")
+			item_status = QTableWidgetItem("Blocked (Ada Hambatan)")
+			item_status.setForeground(QBrush(QColor("#dc2626")))
 			self._run_btn.setEnabled(False)
 		else:
-			self._lbl_status.setText("Ready")
-			self._lbl_status.setStyleSheet("color: #4caf7d; font-weight: bold;")
-			self._lbl_issues.setText("Semua validasi lolos")
-			self._lbl_issues.setStyleSheet("color: #4a6278;")
+			item_status = QTableWidgetItem("Ready")
+			item_status.setForeground(QBrush(QColor("#059669")))
 			self._run_btn.setEnabled(True)
+		self.table_summary.setItem(0, 3, item_status)
 
 	def set_running(self, running: bool) -> None:
 		self._run_btn.setEnabled(not running)
@@ -177,6 +151,8 @@ class RunPage(QWidget):
 		sb.setValue(sb.maximum())
 
 	def set_run_feedback(self, message: str) -> None:
-		self._lbl_status.setText(message)
+		# Update Validation Status column with feedback
+		item_feedback = QTableWidgetItem(message)
+		item_feedback.setForeground(QBrush(QColor("#0891b2")))
+		self.table_summary.setItem(0, 3, item_feedback)
 		self.append_log(message)
-

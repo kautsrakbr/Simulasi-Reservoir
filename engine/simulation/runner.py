@@ -273,6 +273,9 @@ def run_timestep(
 	converged = False
 	prev_state_for_delta: ReservoirState | None = None
 
+	last_jacobian: list[list[float]] = []
+	corrections_history: list[list[float]] = []
+
 	for iteration in range(1, max_iterations + 1):
 		used_iterations = iteration
 		final_diagnostics = _compute_step_diagnostics(
@@ -331,12 +334,14 @@ def run_timestep(
 				sg_delta=1e-6,
 				unknown_layout="pressure_sw_sg",
 			)
-			working_state = newton_step(
+			last_jacobian = jacobian
+			working_state, correction = newton_step(
 				working_state,
 				residual_vector,
 				jacobian,
 				project_config.solver,
 			)
+			corrections_history.append(list(correction))
 		except ValueError:
 			working_state = _apply_pressure_relaxation(
 				working_state,
@@ -358,6 +363,8 @@ def run_timestep(
 		max_residual=float(final_diagnostics["max_residual"]),
 		converged=converged,
 	)
+	step_result.jacobian = last_jacobian
+	step_result.corrections = corrections_history
 	step_result.pressure = working_state.pressure
 	step_result.sw = working_state.sw
 	step_result.sg = working_state.sg

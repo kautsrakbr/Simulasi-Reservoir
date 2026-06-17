@@ -43,6 +43,9 @@ class TimeStepResult:
 	max_oil_residual: float = 0.0
 	max_water_residual: float = 0.0
 	max_gas_residual: float = 0.0
+	jacobian: list[list[float]] = field(default_factory=list)
+	corrections: list[list[float]] = field(default_factory=list)
+
 
 
 @dataclass(slots=True)

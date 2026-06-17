@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QThread, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
 	QFileDialog,
@@ -49,10 +49,11 @@ from windows.pvt_page import PVTPage
 from windows.results_page import ResultsPage
 from windows.rock_page import RockPage
 from windows.run_page import RunPage
+from windows.connectivity_3d_page import Connectivity3DPage
 
 
 class _NavSection(QWidget):
-	"""Collapsible accordion section for the left navigation sidebar."""
+	"""Collapsible accordion section for the left navigation sidebar with smooth animation."""
 
 	def __init__(self, title: str, parent: QWidget | None = None) -> None:
 		super().__init__(parent)
@@ -63,11 +64,10 @@ class _NavSection(QWidget):
 		outer.setContentsMargins(0, 0, 0, 0)
 		outer.setSpacing(0)
 
-		# Section header toggle button
-		self._header = QToolButton(self)
+		# Section header toggle button (using QPushButton for QSS text-align left support)
+		self._header = QPushButton(self)
 		self._header.setObjectName("navSectionHeader")
-		self._header.setText(f"  ▼  {title.upper()}")
-		self._header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+		self._header.setText(f"  ▾  {title.upper()}")
 		self._header.setCheckable(True)
 		self._header.setChecked(True)
 		self._header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -81,13 +81,19 @@ class _NavSection(QWidget):
 		self._body_layout.setSpacing(1)
 
 		outer.addWidget(self._header)
-		outer.addWidget(self._body)  # always visible by default
+		outer.addWidget(self._body)
 
 		# Separator line below section
 		sep = QFrame(self)
 		sep.setFrameShape(QFrame.Shape.HLine)
 		sep.setObjectName("navSeparator")
 		outer.addWidget(sep)
+
+		# Animation configuration
+		self._animation = QPropertyAnimation(self._body, b"maximumHeight", self)
+		self._animation.setDuration(220)
+		self._animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+		self._collapsed = False
 
 	def add_item(self, label: str) -> QPushButton:
 		btn = QPushButton(f"    {label}", self._body)
@@ -97,16 +103,41 @@ class _NavSection(QWidget):
 		btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 		self._body_layout.addWidget(btn)
 		self._buttons.append(btn)
+		
+		self._update_max_height_limits()
 		return btn
+
+	def _update_max_height_limits(self) -> None:
+		btn_count = len(self._buttons)
+		total_height = btn_count * 38 + 12
+		if not self._collapsed:
+			self._body.setMaximumHeight(total_height)
 
 	def set_active(self, btn: QPushButton | None) -> None:
 		for b in self._buttons:
 			b.setChecked(b is btn)
 
 	def _toggle(self, checked: bool) -> None:
-		self._body.setVisible(checked)
-		arrow = "▼" if checked else "▶"
+		self._collapsed = not checked
+		
+		# Toggle arrow icon with elegant small triangles (▾ / ▸)
+		arrow = "▾" if checked else "▸"
 		self._header.setText(f"  {arrow}  {self._title.upper()}")
+		
+		btn_count = len(self._buttons)
+		total_height = btn_count * 38 + 12
+		
+		self._animation.stop()
+		if checked:
+			# Slide open animation
+			self._animation.setStartValue(self._body.height())
+			self._animation.setEndValue(total_height)
+			self._animation.start()
+		else:
+			# Slide closed animation
+			self._animation.setStartValue(self._body.height())
+			self._animation.setEndValue(0)
+			self._animation.start()
 
 
 class _InputConstraintPage(QWidget):
@@ -138,40 +169,81 @@ class MainWindow(QMainWindow):
 	def __init__(self) -> None:
 		super().__init__()
 		self.setWindowTitle("CoreReservoir")
-		self.resize(1440, 900)
+		self.resize(1280, 720)
 		self.project_config = create_empty_project("CoreReservoir")
 		self.run_result = None
 		self.project_file_path: Path | None = None
 		self._nav_buttons: list[QPushButton] = []
-		self._sidebar_expanded = True
 
-		# ── Central splitter ────────────────────────────────────────────────
-		self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
+		# ── Central Widget & Sidebar + Stack Splitter Layout ────────────────
+		central_widget = QWidget(self)
+		central_layout = QVBoxLayout(central_widget)
+		central_layout.setContentsMargins(0, 0, 0, 0)
+		central_layout.setSpacing(0)
+
+		# Top Navigation Bar (Logo and Project Actions)
+		self._top_bar = QWidget(central_widget)
+		self._top_bar.setObjectName("topNavBar")
+		top_bar_layout = QHBoxLayout(self._top_bar)
+		top_bar_layout.setContentsMargins(20, 0, 20, 0)
+		top_bar_layout.setSpacing(20)
+
+		# Logo label
+		logo_lbl = QLabel("CORERESERVOIR ENTERPRISE", self._top_bar)
+		logo_lbl.setObjectName("topLogo")
+		top_bar_layout.addWidget(logo_lbl)
+		top_bar_layout.addStretch(1)
+
+		# Project Actions (New, Open, Save) on the right
+		actions_widget = QWidget(self._top_bar)
+		actions_layout = QHBoxLayout(actions_widget)
+		actions_layout.setContentsMargins(0, 0, 0, 0)
+		actions_layout.setSpacing(8)
+
+		btn_new = QPushButton("New", actions_widget)
+		btn_open = QPushButton("Open", actions_widget)
+		btn_save = QPushButton("Save", actions_widget)
+
+		for btn in (btn_new, btn_open, btn_save):
+			btn.setObjectName("topActionBtn")
+			actions_layout.addWidget(btn)
+
+		btn_new.clicked.connect(self._new_project)
+		btn_open.clicked.connect(self._open_project)
+		btn_save.clicked.connect(self._save_project)
+
+		top_bar_layout.addWidget(actions_widget)
+		central_layout.addWidget(self._top_bar)
+
+		# mainSplitter layout: Sidebar + Stacked Widget
+		self._splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
 		self._splitter.setObjectName("mainSplitter")
-		self._splitter.setHandleWidth(5)
 
-		# ── Left sidebar ────────────────────────────────────────────────────
-		self._sidebar = QWidget()
+		# Sidebar Container
+		self._sidebar = QWidget(self._splitter)
 		self._sidebar.setObjectName("sidebar")
-		self._sidebar.setMinimumWidth(48)
-		self._sidebar.setMaximumWidth(280)
 		sidebar_outer = QVBoxLayout(self._sidebar)
 		sidebar_outer.setContentsMargins(0, 0, 0, 0)
 		sidebar_outer.setSpacing(0)
 
-		# Sidebar header row: logo label + collapse button
+		# Sidebar Header Bar (Logo / collapse btn)
 		_header_bar = QWidget(self._sidebar)
 		_header_bar.setObjectName("sidebarHeader")
 		_header_row = QHBoxLayout(_header_bar)
-		_header_row.setContentsMargins(10, 8, 6, 8)
-		_logo = QLabel("CoreReservoir", _header_bar)
-		_logo.setObjectName("sidebarLogo")
+		_header_row.setContentsMargins(12, 10, 12, 10)
+		_header_row.setSpacing(10)
+
+		self._sidebar_logo = QLabel("NAVIGATION", _header_bar)
+		self._sidebar_logo.setObjectName("sidebarLogo")
+		self._sidebar_logo.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
 		self._collapse_btn = QToolButton(_header_bar)
 		self._collapse_btn.setObjectName("sidebarToggle")
 		self._collapse_btn.setText("◀")
-		self._collapse_btn.setToolTip("Sembunyikan / Tampilkan sidebar")
+		self._collapse_btn.setToolTip("Sembunyikan sidebar")
 		self._collapse_btn.clicked.connect(self._toggle_sidebar)
-		_header_row.addWidget(_logo, 1)
+
+		_header_row.addWidget(self._sidebar_logo, 1)
 		_header_row.addWidget(self._collapse_btn)
 		sidebar_outer.addWidget(_header_bar)
 
@@ -191,8 +263,8 @@ class MainWindow(QMainWindow):
 		self._nav_scroll.setWidget(self._nav_inner)
 		sidebar_outer.addWidget(self._nav_scroll, 1)
 
-		# ── Right: stacked page area ────────────────────────────────────────
-		self._page_stack = QStackedWidget(self)
+		# Page stack on the right
+		self._page_stack = QStackedWidget(self._splitter)
 		self._page_stack.setObjectName("pageStack")
 
 		self._splitter.addWidget(self._sidebar)
@@ -200,8 +272,10 @@ class MainWindow(QMainWindow):
 		self._splitter.setStretchFactor(0, 0)
 		self._splitter.setStretchFactor(1, 1)
 		self._splitter.setSizes([200, 1240])
+		self._sidebar_expanded = True
 
-		self.setCentralWidget(self._splitter)
+		central_layout.addWidget(self._splitter, 1)
+		self.setCentralWidget(central_widget)
 
 		self._add_pages()
 		self._connect_signals()
@@ -215,6 +289,7 @@ class MainWindow(QMainWindow):
 	def _toggle_sidebar(self) -> None:
 		self._sidebar_expanded = not self._sidebar_expanded
 		self._nav_scroll.setVisible(self._sidebar_expanded)
+		self._sidebar_logo.setVisible(self._sidebar_expanded)
 		if self._sidebar_expanded:
 			self._collapse_btn.setText("◀")
 			self._collapse_btn.setToolTip("Sembunyikan sidebar")
@@ -243,36 +318,6 @@ class MainWindow(QMainWindow):
 		project_menu.addSeparator()
 		project_menu.addAction(save_action)
 		project_menu.addAction(save_as_action)
-
-		toolbar = QToolBar("Project", self)
-		toolbar.setMovable(False)
-		toolbar.setObjectName("mainToolbar")
-		toolbar.addAction(new_action)
-		toolbar.addAction(open_action)
-		toolbar.addAction(save_action)
-		toolbar.addAction(save_as_action)
-		toolbar.addSeparator()
-
-		# Quick navigation shortcut buttons in toolbar
-		_tb_dashboard = QToolButton(toolbar)
-		_tb_dashboard.setText("Dashboard")
-		_tb_dashboard.setObjectName("toolbarNav")
-		_tb_dashboard.clicked.connect(self._open_dashboard_tab)
-		toolbar.addWidget(_tb_dashboard)
-
-		_tb_run = QToolButton(toolbar)
-		_tb_run.setText("Run")
-		_tb_run.setObjectName("toolbarNav")
-		_tb_run.clicked.connect(lambda _=None: self._switch_to_page(2))
-		toolbar.addWidget(_tb_run)
-
-		_tb_results = QToolButton(toolbar)
-		_tb_results.setText("Results")
-		_tb_results.setObjectName("toolbarNav")
-		_tb_results.clicked.connect(lambda _=None: self._switch_to_page(3))
-		toolbar.addWidget(_tb_results)
-
-		self.addToolBar(toolbar)
 
 		new_action.triggered.connect(self._new_project)
 		open_action.triggered.connect(self._open_project)
@@ -349,6 +394,7 @@ class MainWindow(QMainWindow):
 		self.initial_page = InitialPage()
 		self.run_page = RunPage()
 		self.results_page = ResultsPage()
+		self.connectivity_3d_page = Connectivity3DPage()
 		self.input_constraints_page = _InputConstraintPage(
 			[
 				("Dashboard", self.dashboard_page),
@@ -365,6 +411,14 @@ class MainWindow(QMainWindow):
 			],
 			self,
 		)
+		self.configuration_page = self.connectivity_3d_page
+
+		# Add pages to stack
+		self._page_stack.addWidget(self.input_constraints_page)  # index 0
+		self._page_stack.addWidget(self.properties_page)         # index 1
+		self._page_stack.addWidget(self.configuration_page)      # index 2
+		self._page_stack.addWidget(self.run_page)                # index 3
+		self._page_stack.addWidget(self.results_page)            # index 4
 
 		# Group 1: Inputs
 		_inputs_section = _NavSection("Inputs", self._nav_inner)
@@ -374,23 +428,26 @@ class MainWindow(QMainWindow):
 		_sim_section = _NavSection("Simulation", self._nav_inner)
 		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _sim_section)
 
-		# Add pages to stack
-		self._page_stack.addWidget(self.input_constraints_page)  # index 0
-		self._page_stack.addWidget(self.properties_page)         # index 1
-		self._page_stack.addWidget(self.run_page)                # index 2
-		self._page_stack.addWidget(self.results_page)            # index 3
-
 		# Sidebar navigation items
-		btn_input = _inputs_section.add_item("Input && Constraint")
-		btn_properties = _inputs_section.add_item("Properties")
-		btn_run = _sim_section.add_item("Run")
-		btn_results = _sim_section.add_item("Results")
+		self.btn_input = _inputs_section.add_item("Constraints")
+		self.btn_properties = _inputs_section.add_item("Properties")
+		self.btn_configuration = _sim_section.add_item("Configuration")
+		self.btn_run = _sim_section.add_item("Simulation Run")
+		self.btn_results = _sim_section.add_item("Analytics & Results")
 
-		btn_input.clicked.connect(lambda _=None: self._switch_to_page(0))
-		btn_properties.clicked.connect(lambda _=None: self._switch_to_page(1))
-		btn_run.clicked.connect(lambda _=None: self._switch_to_page(2))
-		btn_results.clicked.connect(lambda _=None: self._switch_to_page(3))
-		self._nav_buttons.extend([btn_input, btn_properties, btn_run, btn_results])
+		# Wire the navigation buttons
+		self.btn_input.clicked.connect(lambda _=None: self._switch_to_page(0))
+		self.btn_properties.clicked.connect(lambda _=None: self._switch_to_page(1))
+		self.btn_configuration.clicked.connect(lambda _=None: self._switch_to_page(2))
+		self.btn_run.clicked.connect(lambda _=None: self._switch_to_page(3))
+		self.btn_results.clicked.connect(lambda _=None: self._switch_to_page(4))
+		self._nav_buttons.extend([
+			self.btn_input,
+			self.btn_properties,
+			self.btn_configuration,
+			self.btn_run,
+			self.btn_results,
+		])
 
 		# Mark first nav btn active
 		if self._nav_buttons:
@@ -408,7 +465,7 @@ class MainWindow(QMainWindow):
 		self.initial_page.initialConditionsChanged.connect(self._handle_initial_conditions_changed)
 		self.run_page.runRequested.connect(self._start_run_simulation)
 		self.run_page.cancelRequested.connect(self._cancel_run_simulation)
-		self.results_page.goToRunRequested.connect(lambda: self._switch_to_page(2))
+		self.results_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
 
 	def _handle_project_changed(
 		self,
@@ -572,7 +629,7 @@ class MainWindow(QMainWindow):
 		mark_project_clean(self.project_config)
 		self._refresh_pages()
 		self.results_page.set_run_result(run_result)
-		self._switch_to_page(3)  # go to Results
+		self._switch_to_page(4)  # go to Results
 		self.statusBar().showMessage(msg, 8000)
 
 	def _on_run_failed(self, error: str) -> None:
@@ -592,6 +649,7 @@ class MainWindow(QMainWindow):
 		self.run_page.set_project_state(self.project_config, validation_errors)
 		self.results_page.set_project(self.project_config)
 		self.results_page.set_run_result(self.run_result)
+		self.connectivity_3d_page.set_project(self.project_config)
 		self._update_window_caption()
 
 	def _update_window_caption(self) -> None:
