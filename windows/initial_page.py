@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
 	QDoubleSpinBox,
 	QFormLayout,
 	QFrame,
-	QGroupBox,
 	QHBoxLayout,
 	QLabel,
 	QVBoxLayout,
@@ -13,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from engine.domain.project import ProjectConfig
+from windows.ui_kit import SpinBoxInputBlocker, enable_precise_edit, make_card, make_hero_banner
 
 
 def _form(parent: QWidget | None = None) -> QFormLayout:
@@ -25,7 +25,7 @@ def _form(parent: QWidget | None = None) -> QFormLayout:
 
 
 class InitialPage(QWidget):
-	initialConditionsChanged = Signal(float, float, float)
+	initialConditionsChanged = Signal(float, float, float, float)
 
 	def __init__(self) -> None:
 		super().__init__()
@@ -47,9 +47,20 @@ class InitialPage(QWidget):
 		sep.setObjectName("pageDivider")
 		outer.addWidget(sep)
 
+		# ── Hero saturation banner ──────────────────────────────────────
+		hero, (self._hero_sw, self._hero_sg, self._hero_so) = make_hero_banner(
+			["SATURASI AIR (Sw)", "SATURASI GAS (Sg)", "SATURASI MINYAK (So)"]
+		)
+		outer.addWidget(hero)
+
 		# ── Group: Reference & Initial Saturations ────────────────────
-		grp = QGroupBox("Referensi & Saturasi Awal")
-		frm = _form(grp)
+		self._spin_input_blockers: list[SpinBoxInputBlocker] = []
+		card, lay = make_card("R", "#0891b2", "Referensi & Saturasi Awal", "Kondisi awal simulasi reservoir")
+		frm = _form()
+		self.initial_pressure_input = QDoubleSpinBox()
+		self.initial_pressure_input.setRange(0.0, 1_000_000.0)
+		self.initial_pressure_input.setDecimals(2)
+		self.initial_pressure_input.setSingleStep(10.0)
 		self.reference_depth_input = QDoubleSpinBox()
 		self.reference_depth_input.setRange(0.0, 100_000.0)
 		self.reference_depth_input.setDecimals(2)
@@ -68,11 +79,25 @@ class InitialPage(QWidget):
 		self.initial_so_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 		self.initial_so_label.setFixedWidth(90)
 
-		frm.addRow("Kedalaman Referensi (ft)", self.reference_depth_input)
-		frm.addRow("Saturasi Air Awal  Sw", self.initial_sw_input)
-		frm.addRow("Saturasi Gas Awal  Sg", self.initial_sg_input)
+		frm.addRow(
+			"Initial Pressure (psi)",
+			enable_precise_edit(self, self.initial_pressure_input, "Initial Pressure (psi)", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Kedalaman Referensi (ft)",
+			enable_precise_edit(self, self.reference_depth_input, "Kedalaman Referensi (ft)", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Saturasi Air Awal  Sw",
+			enable_precise_edit(self, self.initial_sw_input, "Saturasi Air Awal Sw", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Saturasi Gas Awal  Sg",
+			enable_precise_edit(self, self.initial_sg_input, "Saturasi Gas Awal Sg", self._spin_input_blockers),
+		)
 		frm.addRow("Saturasi Minyak  So  =", self.initial_so_label)
-		outer.addWidget(grp)
+		lay.addLayout(frm)
+		outer.addWidget(card)
 
 		# ── Description info label ────────────────────────────────────
 		self.description = QLabel()
@@ -83,16 +108,19 @@ class InitialPage(QWidget):
 		outer.addStretch()
 
 		# ── Wire signals ──────────────────────────────────────────────
+		self.initial_pressure_input.valueChanged.connect(self._emit_change)
 		self.reference_depth_input.valueChanged.connect(self._emit_change)
 		self.initial_sw_input.valueChanged.connect(self._emit_change)
 		self.initial_sg_input.valueChanged.connect(self._emit_change)
 
 	def set_project(self, project_config: ProjectConfig) -> None:
 		blockers = [
+			QSignalBlocker(self.initial_pressure_input),
 			QSignalBlocker(self.reference_depth_input),
 			QSignalBlocker(self.initial_sw_input),
 			QSignalBlocker(self.initial_sg_input),
 		]
+		self.initial_pressure_input.setValue(project_config.reference_data.reference_pressure)
 		self.reference_depth_input.setValue(project_config.initial_conditions.reference_depth)
 		self.initial_sw_input.setValue(project_config.initial_conditions.initial_sw)
 		self.initial_sg_input.setValue(project_config.initial_conditions.initial_sg)
@@ -108,7 +136,9 @@ class InitialPage(QWidget):
 		sw = self.initial_sw_input.value()
 		sg = self.initial_sg_input.value()
 		self._update_so_label(sw, sg)
-		self.initialConditionsChanged.emit(self.reference_depth_input.value(), sw, sg)
+		self.initialConditionsChanged.emit(
+			self.reference_depth_input.value(), sw, sg, self.initial_pressure_input.value()
+		)
 
 	def _update_so_label(self, sw: float, sg: float) -> None:
 		so = max(0.0, 1.0 - sw - sg)
@@ -117,3 +147,7 @@ class InitialPage(QWidget):
 		self.initial_so_label.setProperty("soValid", is_valid)
 		self.initial_so_label.style().unpolish(self.initial_so_label)
 		self.initial_so_label.style().polish(self.initial_so_label)
+
+		self._hero_sw.setText(f"{sw:.4f}")
+		self._hero_sg.setText(f"{sg:.4f}")
+		self._hero_so.setText(f"{so:.4f}")

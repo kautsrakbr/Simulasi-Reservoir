@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
 	QFrame,
+	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QLabel,
 	QProgressBar,
@@ -41,11 +42,13 @@ class RunPage(QWidget):
 		self._run_btn = QPushButton("▶  Run", self._header)
 		self._run_btn.setObjectName("runBtnPrimary")
 		self._run_btn.setFixedWidth(110)
+		self._run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
 		self._stop_btn = QPushButton("■  Stop", self._header)
 		self._stop_btn.setObjectName("runBtnStop")
 		self._stop_btn.setFixedWidth(110)
 		self._stop_btn.setEnabled(False)
+		self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
 		_hrow.addWidget(_title)
 		_hrow.addStretch(1)
@@ -73,6 +76,12 @@ class RunPage(QWidget):
 		for col in range(4):
 			self.table_summary.setItem(0, col, QTableWidgetItem("—"))
 
+		summary_shadow = QGraphicsDropShadowEffect(self.table_summary)
+		summary_shadow.setBlurRadius(16)
+		summary_shadow.setColor(QColor(15, 23, 42, 20))
+		summary_shadow.setOffset(0, 3)
+		self.table_summary.setGraphicsEffect(summary_shadow)
+
 		top_container = QWidget(self)
 		top_lay = QVBoxLayout(top_container)
 		top_lay.setContentsMargins(20, 16, 20, 0)
@@ -87,6 +96,11 @@ class RunPage(QWidget):
 		self._log.setObjectName("logOutput")
 		self._log.setReadOnly(True)
 		self._log.setPlaceholderText("Log simulasi akan muncul di sini saat run dimulai…")
+		log_shadow = QGraphicsDropShadowEffect(self._log)
+		log_shadow.setBlurRadius(18)
+		log_shadow.setColor(QColor(15, 23, 42, 30))
+		log_shadow.setOffset(0, 3)
+		self._log.setGraphicsEffect(log_shadow)
 
 		# ── Root Layout ──────────────────────────────────────────────────────
 		root = QVBoxLayout(self)

@@ -263,15 +263,13 @@ def run_timestep(
 ) -> tuple[TimeStepResult, ReservoirState, bool, float]:
 	working_state = _initialize_iteration_state(previous_state)
 	max_iterations = max(1, project_config.solver.max_newton_iterations)
-	# Criterion 1 target: max normalised per-phase residual < residual_norm_floor
-	residual_target = project_config.solver.residual_norm_floor
-	# Criterion 2 target: max relative pressure change and absolute sat change < parameter_tolerance
-	param_target = project_config.solver.parameter_tolerance
+	# Newton stops as soon as the max normalised residual drops to/below this tolerance
+	# (configured via "Residual Tolerance" in Model & Solver); otherwise it keeps iterating.
+	residual_target = project_config.solver.residual_tolerance
 
 	final_diagnostics: _StepDiagnostics | None = None
 	used_iterations = 0
 	converged = False
-	prev_state_for_delta: ReservoirState | None = None
 
 	last_jacobian: list[list[float]] = []
 	corrections_history: list[list[float]] = []
@@ -286,33 +284,10 @@ def run_timestep(
 			dt_days,
 		)
 
-		# ── Criterion 1: max normalised residual across all 3 phases ──────────
-		residual_ok = float(final_diagnostics["residual_norm_vector"]) <= residual_target
-
-		# ── Criterion 2: max parameter change vs previous Newton iterate ──────
-		if prev_state_for_delta is not None and working_state.pressure:
-			max_dp_rel = max(
-				abs(p1 - p0) / max(abs(p0), 1.0)
-				for p1, p0 in zip(working_state.pressure, prev_state_for_delta.pressure)
-			)
-			max_dsw = (
-				max(abs(s1 - s0) for s1, s0 in zip(working_state.sw, prev_state_for_delta.sw))
-				if working_state.sw else 0.0
-			)
-			max_dsg = (
-				max(abs(s1 - s0) for s1, s0 in zip(working_state.sg, prev_state_for_delta.sg))
-				if working_state.sg else 0.0
-			)
-			param_ok = max(max_dp_rel, max_dsw, max_dsg) <= param_target
-		else:
-			param_ok = False  # first iteration: no previous iterate to compare
-
-		if residual_ok and param_ok:
+		if float(final_diagnostics["residual_norm_vector"]) <= residual_target:
 			converged = True
 			break
-		# max iterations exhausted without both criteria met → converged stays False
-
-		prev_state_for_delta = _copy_state(working_state)
+		# residual still above tolerance → keep iterating until max_newton_iterations
 
 		def _residual_evaluator(candidate_state: ReservoirState) -> list[float]:
 			candidate_diagnostics = _compute_step_diagnostics(

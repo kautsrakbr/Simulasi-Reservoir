@@ -39,7 +39,8 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 			"max_step_retries": project_config.solver.max_step_retries,
 			"max_newton_iterations": project_config.solver.max_newton_iterations,
 			"residual_tolerance": project_config.solver.residual_tolerance,
-			"parameter_tolerance": project_config.solver.parameter_tolerance,
+			"parameter_tolerance_pressure": project_config.solver.parameter_tolerance_pressure,
+			"parameter_tolerance_saturation": project_config.solver.parameter_tolerance_saturation,
 			"residual_norm_floor": project_config.solver.residual_norm_floor,
 			"newton_pressure_damping": project_config.solver.newton_pressure_damping,
 			"newton_saturation_damping": project_config.solver.newton_saturation_damping,
@@ -66,6 +67,22 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 		},
 		"pvt_tables": _serialize_table(project_config.pvt_tables),
 		"rock_tables": _serialize_table(project_config.rock_tables),
+		"perturbation": {
+			"perturbed_cell_id": project_config.perturbation.perturbed_cell_id,
+			"delta_P":           project_config.perturbation.delta_P,
+			"delta_Sw":          project_config.perturbation.delta_Sw,
+			"delta_Sg":          project_config.perturbation.delta_Sg,
+		},
+		"wells": [
+			{
+				"name": w.name,
+				"well_type": w.well_type,
+				"cell_id": w.cell_id,
+				"well_model": w.well_model,
+				"flowrate": w.flowrate,
+			}
+			for w in project_config.wells
+		],
 	}
 
 

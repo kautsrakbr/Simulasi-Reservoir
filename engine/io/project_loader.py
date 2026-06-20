@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from engine.domain.project import ProjectConfig
+from engine.domain.project import PerturbationConfig, ProjectConfig, WellConfig
 from engine.io.grid_reader import read_grid_spec
 from engine.io.ref_reader import read_reference_data
 
@@ -50,6 +50,24 @@ def _deserialize_table(table_data: object) -> dict[str, list[tuple[float, float]
 			y_value = _as_float(row[1], 0.0)
 			parsed_rows.append((x_value, y_value))
 		result[str(name)] = parsed_rows
+	return result
+
+
+def _deserialize_wells(wells_data: object) -> list[WellConfig]:
+	if not isinstance(wells_data, list):
+		return []
+	result: list[WellConfig] = []
+	for item in wells_data:
+		if not isinstance(item, dict):
+			continue
+		d = {str(k): v for k, v in item.items()}
+		result.append(WellConfig(
+			name=str(d.get("name", "")),
+			well_type=str(d.get("well_type", "production")),
+			cell_id=_as_int(d.get("cell_id"), 1),
+			well_model=str(d.get("well_model", "simple_flowrate")),
+			flowrate=_as_float(d.get("flowrate"), 100.0),
+		))
 	return result
 
 
@@ -133,9 +151,16 @@ def load_project(payload: dict[str, object]) -> ProjectConfig:
 		solver_payload.get("residual_tolerance"),
 		project.solver.residual_tolerance,
 	)
-	project.solver.parameter_tolerance = _as_float(
-		solver_payload.get("parameter_tolerance"),
-		project.solver.parameter_tolerance,
+	# Legacy projects stored one shared "parameter_tolerance" for both Δp and ΔS;
+	# fall back to it when the split keys are absent so old files keep their value.
+	legacy_tolerance = solver_payload.get("parameter_tolerance")
+	project.solver.parameter_tolerance_pressure = _as_float(
+		solver_payload.get("parameter_tolerance_pressure"),
+		_as_float(legacy_tolerance, project.solver.parameter_tolerance_pressure),
+	)
+	project.solver.parameter_tolerance_saturation = _as_float(
+		solver_payload.get("parameter_tolerance_saturation"),
+		_as_float(legacy_tolerance, project.solver.parameter_tolerance_saturation),
 	)
 	project.solver.residual_norm_floor = _as_float(
 		solver_payload.get("residual_norm_floor"),
@@ -185,6 +210,14 @@ def load_project(payload: dict[str, object]) -> ProjectConfig:
 
 	project.pvt_tables = _deserialize_table(payload.get("pvt_tables", {}))
 	project.rock_tables = _deserialize_table(payload.get("rock_tables", {}))
+	project.wells = _deserialize_wells(payload.get("wells", []))
+	pert_raw = _as_dict(payload.get("perturbation", {}))
+	project.perturbation = PerturbationConfig(
+		perturbed_cell_id=_as_int(pert_raw.get("perturbed_cell_id"), 0),
+		delta_P=_as_float(pert_raw.get("delta_P"), 0.0),
+		delta_Sw=_as_float(pert_raw.get("delta_Sw"), 0.0),
+		delta_Sg=_as_float(pert_raw.get("delta_Sg"), 0.0),
+	)
 	project.is_dirty = _as_bool(payload.get("is_dirty"), False)
 	return project
 

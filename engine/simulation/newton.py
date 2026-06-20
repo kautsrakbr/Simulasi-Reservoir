@@ -28,8 +28,8 @@ def apply_newton_update(
 ) -> ReservoirState:
 	pressure_damping = solver_config.newton_pressure_damping
 	saturation_damping = solver_config.newton_saturation_damping
-	max_delta = max(solver_config.max_pressure_correction, solver_config.parameter_tolerance)
-	max_sat_delta = min(1.0, max(solver_config.max_saturation_correction, solver_config.parameter_tolerance))
+	max_delta = max(solver_config.max_pressure_correction, solver_config.parameter_tolerance_pressure)
+	max_sat_delta = min(1.0, max(solver_config.max_saturation_correction, solver_config.parameter_tolerance_saturation))
 	cell_count = len(state_k.pressure)
 	new_pressure = list(state_k.pressure)
 	for index, pressure in enumerate(new_pressure):

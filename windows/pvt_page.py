@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QFileDialog,
 	QFrame,
+	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QHeaderView,
 	QLabel,
@@ -75,6 +77,7 @@ class PVTPage(QWidget):
 		self.clear_button.setObjectName("pvtDangerButton")
 		for b in (self.import_button, self.load_button, self.clear_button):
 			b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+			b.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_row.addWidget(self.import_button)
 		btn_row.addWidget(self.load_button)
 		btn_row.addStretch()
@@ -101,6 +104,11 @@ class PVTPage(QWidget):
 		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
 		for i in range(1, col_count):
 			hh.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+		table_shadow = QGraphicsDropShadowEffect(self.table_preview)
+		table_shadow.setBlurRadius(16)
+		table_shadow.setColor(QColor(15, 23, 42, 20))
+		table_shadow.setOffset(0, 3)
+		self.table_preview.setGraphicsEffect(table_shadow)
 		root.addWidget(self.table_preview, stretch=1)
 
 		# ── Format hint ───────────────────────────────────────────────

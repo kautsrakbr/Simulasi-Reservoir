@@ -44,8 +44,10 @@ def validate_solver_inputs(project_config: ProjectConfig) -> list[str]:
 		errors.append("Residual tolerance harus lebih besar dari 0.")
 	if project_config.solver.residual_norm_floor <= 0.0:
 		errors.append("Residual norm floor harus lebih besar dari 0.")
-	if project_config.solver.parameter_tolerance <= 0.0:
-		errors.append("Parameter tolerance harus lebih besar dari 0.")
+	if project_config.solver.parameter_tolerance_pressure <= 0.0:
+		errors.append("Parameter tolerance (Δp) harus lebih besar dari 0.")
+	if project_config.solver.parameter_tolerance_saturation <= 0.0:
+		errors.append("Parameter tolerance (ΔS) harus lebih besar dari 0.")
 	if not 0.0 < project_config.solver.newton_pressure_damping <= 1.0:
 		errors.append("Newton pressure damping harus berada pada rentang (0, 1].")
 	if not 0.0 < project_config.solver.newton_saturation_damping <= 1.0:

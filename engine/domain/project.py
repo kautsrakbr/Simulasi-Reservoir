@@ -25,9 +25,10 @@ class SolverConfig:
 	timestep_growth_factor: float = 1.1
 	timestep_shrink_factor: float = 0.5
 	max_step_retries: int = 8
-	max_newton_iterations: int = 10
-	residual_tolerance: float = 1e-6
-	parameter_tolerance: float = 1e-4
+	max_newton_iterations: int = 20
+	residual_tolerance: float = 1e-5
+	parameter_tolerance_pressure: float = 1e-3    # psi-scale Newton convergence floor for delta-P
+	parameter_tolerance_saturation: float = 1e-4  # fraction-scale Newton convergence floor for delta-S
 	residual_norm_floor: float = 0.1
 	newton_pressure_damping: float = 0.7
 	newton_saturation_damping: float = 0.7
@@ -48,6 +49,25 @@ class InitialConditionConfig:
 	initial_sg: float = 0.0
 
 @dataclass(slots=True)
+class PerturbationConfig:
+	perturbed_cell_id: int = 0   # 0 = no cell selected
+	# delta = 0.0 → auto-compute as initial_value / 15
+	# delta > 0   → use this custom value
+	delta_P: float = 0.0          # psia
+	delta_Sw: float = 0.0         # fraction (0–1)
+	delta_Sg: float = 0.0         # fraction (0–1)
+
+
+@dataclass(slots=True)
+class WellConfig:
+	name: str = ""
+	well_type: str = "production"        # "production" | "injection"
+	cell_id: int = 1                     # 1-indexed 2D cell (ix + iy*nx + 1)
+	well_model: str = "simple_flowrate"  # "simple_flowrate" | "peaceman" | "well_model_3"
+	flowrate: float = 100.0              # STB/day (positive for both; type determines sign)
+
+
+@dataclass(slots=True)
 class ProjectConfig:
 	name: str = "CoreReservoir"
 	description: str = ""
@@ -58,4 +78,6 @@ class ProjectConfig:
 	grid_spec: GridSpec = field(default_factory=GridSpec)
 	pvt_tables: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
 	rock_tables: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
+	wells: list[WellConfig] = field(default_factory=list)
+	perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
 	is_dirty: bool = False

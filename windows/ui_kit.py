@@ -1,0 +1,246 @@
+from __future__ import annotations
+
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+	QAbstractSpinBox,
+	QDoubleSpinBox,
+	QFrame,
+	QGraphicsDropShadowEffect,
+	QHBoxLayout,
+	QInputDialog,
+	QLabel,
+	QLineEdit,
+	QMenu,
+	QMessageBox,
+	QSizePolicy,
+	QSpinBox,
+	QVBoxLayout,
+	QWidget,
+)
+
+
+def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> tuple[QFrame, QVBoxLayout]:
+	"""Build a shadowed white card with a circular icon badge + title/subtitle header.
+
+	Shared visual building block used across the Grid, Model and Initial
+	Conditions pages so section headers look consistent app-wide.
+	"""
+	card = QFrame()
+	card.setObjectName("uiKitCard")
+	card.setStyleSheet("""
+		QFrame#uiKitCard {
+			background-color: #ffffff;
+			border: 1px solid #e2e8f0;
+			border-radius: 12px;
+		}
+	""")
+	shadow = QGraphicsDropShadowEffect(card)
+	shadow.setBlurRadius(18)
+	shadow.setColor(QColor(15, 23, 42, 22))
+	shadow.setOffset(0, 3)
+	card.setGraphicsEffect(shadow)
+
+	lay = QVBoxLayout(card)
+	lay.setContentsMargins(18, 16, 18, 16)
+	lay.setSpacing(12)
+
+	header = QHBoxLayout()
+	header.setSpacing(10)
+
+	icon_lbl = QLabel(icon_letter)
+	icon_lbl.setFixedSize(32, 32)
+	icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+	icon_lbl.setStyleSheet(
+		f"background-color: {icon_color}; color: #ffffff; border-radius: 16px;"
+		"font-size: 11pt; font-weight: 800;"
+	)
+	header.addWidget(icon_lbl)
+
+	title_block = QVBoxLayout()
+	title_block.setSpacing(0)
+	title_lbl = QLabel(title)
+	title_lbl.setStyleSheet("font-size: 11pt; font-weight: 800; color: #0f172a;")
+	title_block.addWidget(title_lbl)
+	sub_lbl = QLabel(subtitle)
+	sub_lbl.setStyleSheet("font-size: 8pt; color: #94a3b8;")
+	title_block.addWidget(sub_lbl)
+	header.addLayout(title_block)
+	header.addStretch(1)
+	lay.addLayout(header)
+
+	sep = QFrame()
+	sep.setFrameShape(QFrame.Shape.HLine)
+	sep.setStyleSheet("background-color: #f1f5f9; border: none; max-height: 1px;")
+	lay.addWidget(sep)
+
+	return card, lay
+
+
+def make_hero_banner(stat_tags: list[str]) -> tuple[QFrame, list[QLabel]]:
+	"""Build a teal-gradient hero banner with N stat blocks, returning their value labels."""
+	card = QFrame()
+	card.setObjectName("uiKitHero")
+	card.setStyleSheet("""
+		QFrame#uiKitHero {
+			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+				stop:0 #06b6d4, stop:1 #0e7490);
+			border-radius: 14px;
+		}
+	""")
+	shadow = QGraphicsDropShadowEffect(card)
+	shadow.setBlurRadius(22)
+	shadow.setColor(QColor(8, 145, 178, 90))
+	shadow.setOffset(0, 5)
+	card.setGraphicsEffect(shadow)
+
+	lay = QHBoxLayout(card)
+	lay.setContentsMargins(22, 16, 22, 16)
+	lay.setSpacing(26)
+
+	value_labels: list[QLabel] = []
+	for i, tag in enumerate(stat_tags):
+		if i > 0:
+			divider = QFrame()
+			divider.setFrameShape(QFrame.Shape.VLine)
+			divider.setStyleSheet("background-color: rgba(255,255,255,70); max-width: 1px;")
+			lay.addWidget(divider)
+
+		block = QVBoxLayout()
+		block.setSpacing(2)
+		tag_lbl = QLabel(tag)
+		tag_lbl.setStyleSheet(
+			"font-size: 7.5pt; font-weight: 800; color: #cffafe;"
+			"letter-spacing: 1.2px; background: transparent;"
+		)
+		block.addWidget(tag_lbl)
+		val_lbl = QLabel("-")
+		val_lbl.setStyleSheet(
+			"font-size: 14pt; font-weight: 900; color: #ffffff; background: transparent;"
+		)
+		block.addWidget(val_lbl)
+		value_labels.append(val_lbl)
+		lay.addLayout(block)
+
+	lay.addStretch(1)
+	return card, value_labels
+
+
+class SpinBoxInputBlocker(QObject):
+	"""Blocks wheel scrolling and Up/Down/PageUp/PageDown stepping on a spin box.
+
+	Fields wired through enable_precise_edit() are meant to be set only via
+	the right-click "Set nilai presisi…" dialog, so an accidental scroll or
+	arrow-key press over a focused field must not silently change a value.
+	"""
+
+	_STEP_KEYS = (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown)
+
+	def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+		if event.type() == QEvent.Type.Wheel:
+			return True
+		if event.type() == QEvent.Type.KeyPress and event.key() in self._STEP_KEYS:
+			return True
+		return False
+
+
+def enable_precise_edit(
+	parent: QWidget, spin: QAbstractSpinBox, label: str, blockers: list[SpinBoxInputBlocker]
+) -> QAbstractSpinBox:
+	"""Make a spin box edit-via-dialog-only: typing, wheel scroll, and Up/Down
+	stepping are disabled; right-click (or the field's context menu) opens a
+	"Set nilai presisi…" dialog that is the only way to change the value.
+
+	Also flattens the field's visual style so it reads as a value sized to
+	its own content rather than an editable box stretched across the row —
+	`blockers` must be a list owned by the caller (e.g. an instance attribute)
+	to keep the installed event filters alive.
+	"""
+	spin.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+	spin.customContextMenuRequested.connect(
+		lambda pos, s=spin, lbl=label: _show_field_menu(parent, s, lbl, s.mapToGlobal(pos))
+	)
+	spin.setProperty("flatValue", True)
+	spin.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+	spin.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+	spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+	spin.setCursor(Qt.CursorShape.PointingHandCursor)
+	# The visible text area is actually spin's internal QLineEdit child, which
+	# is what the cursor is over on right-click — wire it directly too instead
+	# of relying on the event bubbling up to the spin box's own policy.
+	line_edit = spin.lineEdit()
+	if line_edit is not None:
+		line_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+		line_edit.customContextMenuRequested.connect(
+			lambda pos, s=spin, le=line_edit, lbl=label: _show_field_menu(parent, s, lbl, le.mapToGlobal(pos))
+		)
+		# These fields are edit-via-dialog-only: typing, wheel scroll, and
+		# Up/Down stepping are all disabled here; the dialog still changes
+		# the value through setValue(), which setReadOnly() does not block.
+		line_edit.setReadOnly(True)
+		line_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+		blocker = SpinBoxInputBlocker(parent)
+		spin.installEventFilter(blocker)
+		line_edit.installEventFilter(blocker)
+		blockers.append(blocker)
+	return spin
+
+
+def _show_field_menu(parent: QWidget, spin: QAbstractSpinBox, label: str, global_pos) -> None:
+	menu = QMenu(parent)
+	menu.setStyleSheet("""
+		QMenu {
+			background-color: #ffffff;
+			border: 1px solid #e2e8f0;
+			border-radius: 8px;
+			padding: 4px;
+			font-size: 9.5pt;
+		}
+		QMenu::item {
+			padding: 9px 18px 9px 12px;
+			border-radius: 5px;
+			color: #0f172a;
+			min-width: 160px;
+		}
+		QMenu::item:selected { background-color: #f1f5f9; }
+	""")
+	act_set_value = menu.addAction("  Set nilai presisi…")
+	action = menu.exec(global_pos)
+	if action == act_set_value:
+		_show_precise_value_dialog(parent, spin, label)
+
+
+def _show_precise_value_dialog(parent: QWidget, spin: QAbstractSpinBox, label: str) -> None:
+	current_text = spin.textFromValue(spin.value()) if isinstance(spin, QDoubleSpinBox) else str(spin.value())
+	text, ok = QInputDialog.getText(
+		parent,
+		f"Set Nilai — {label}",
+		"Nilai (notasi scientific seperti 1e-5 didukung):",
+		QLineEdit.EchoMode.Normal,
+		current_text,
+	)
+	if not ok:
+		return
+	raw = text.strip().replace(",", ".")
+	try:
+		value = float(raw)
+	except ValueError:
+		QMessageBox.warning(parent, "Nilai Tidak Valid", f"'{text}' bukan angka yang valid.")
+		return
+	if isinstance(spin, QSpinBox):
+		value_int = int(round(value))
+		if not (spin.minimum() <= value_int <= spin.maximum()):
+			QMessageBox.warning(
+				parent, "Nilai Luar Rentang",
+				f"Nilai harus berupa bilangan bulat antara {spin.minimum()} dan {spin.maximum()}.",
+			)
+			return
+		spin.setValue(value_int)
+		return
+	if not (spin.minimum() <= value <= spin.maximum()):
+		QMessageBox.warning(
+			parent, "Nilai Luar Rentang",
+			f"Nilai harus berada pada rentang {spin.minimum()} – {spin.maximum()}.",
+		)
+		return
+	spin.setValue(value)

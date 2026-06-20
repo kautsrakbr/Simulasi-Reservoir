@@ -172,6 +172,10 @@ FD_DP  = 1.0    # perturbasi tekanan untuk finite difference (psi)
 FD_DSW = 1e-4   # perturbasi Sw
 FD_DSG = 1e-4   # perturbasi Sg
 
+# ── Quasi-Newton (Broyden) ────────────────────────────────────────────────────
+QUASI_NEWTON     = True  # aktifkan quasi-Newton; skip pada timestep 1
+QN_REFRESH_EVERY = 5     # paksa reassemble penuh setiap N iterasi jika belum konvergen
+
 # ── Output ───────────────────────────────────────────────────────────────────
 VERBOSE_NEWTON = True   # tampilkan detail setiap iterasi Newton
 
@@ -619,6 +623,34 @@ def gauss_solve(A: list[list[float]], b: list[float]) -> list[float]:
     return x
 
 # ══════════════════════════════════════════════════════════════════════════════
+# QUASI-NEWTON — BROYDEN RANK-1 UPDATE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def broyden_update(
+    J: list[list[float]],
+    s: list[float],
+    y: list[float],
+) -> list[list[float]]:
+    """
+    Broyden rank-1 update:  J_new = J + (y − J·s) s^T / (s^T s)
+    s = x_new − x_old  (perubahan state aktual setelah damping)
+    y = R_new − R_old  (perubahan residual)
+    Jika ‖s‖ terlalu kecil, kembalikan J asli tanpa update.
+    """
+    ss = sum(si * si for si in s)
+    if ss < 1e-28:
+        return J
+    m = len(s)
+    Js = [sum(J[i][k] * s[k] for k in range(m)) for i in range(m)]
+    J_new = [list(row) for row in J]
+    for i in range(m):
+        c = (y[i] - Js[i]) / ss
+        for j in range(m):
+            J_new[i][j] += c * s[j]
+    return J_new
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # UPDATE STATE — NEWTON STEP
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -727,39 +759,55 @@ def run_timestep(
     dt: float,
     t_end: float,
     step_no: int,
-) -> tuple[dict, bool, float, int]:
+    J_prev: list[list[float]] | None = None,
+) -> tuple[dict, bool, float, int, list[list[float]] | None]:
     """
-    Jalankan satu timestep dengan Newton iteration.
-    Kembalikan (state_baru, konvergen, norm_akhir, jumlah_iterasi).
+    Jalankan satu timestep dengan Newton (atau quasi-Newton Broyden) iteration.
+
+    J_prev : Jacobian konvergen dari timestep sebelumnya.
+             None  → selalu assembe J penuh (full Newton).
+             nilai → dipakai sebagai J awal, di-update Broyden tiap iterasi,
+                     di-refresh setiap QN_REFRESH_EVERY iterasi.
+
+    Kembalikan (state_baru, konvergen, norm_akhir, jumlah_iterasi, J_final).
     """
-    # Inisialisasi state kerja (sedikit gangguan agar Jacobian tidak nol)
     state_k = _state_copy(state_n)
     state_k["p"] = [max(14.7, p - 2.0) for p in state_k["p"]]
 
     prev_state_for_delta: dict | None = None
     converged = False
     norm_final = 1e30
-    used_iter = 0
+    used_iter  = 0
+
+    # Jacobian saat ini; akan diisi saat iterasi pertama
+    J_current: list[list[float]] | None = J_prev
+
+    # Untuk Broyden: simpan residual & perubahan state dari iterasi sebelumnya
+    r_prev:   list[float] | None = None
+    x_prev:   list[float] | None = None   # [p_1..n | sw_1..n | sg_1..n]
+
+    use_quasi = QUASI_NEWTON and (J_prev is not None)
 
     if VERBOSE_NEWTON:
-        print(f"\n  -- Newton Loop  (dt={dt:.4f} d, target t={t_end:.4f} d) --")
+        mode = "Quasi-Newton (Broyden)" if use_quasi else "Full Newton"
+        print(f"\n  -- Newton Loop  (dt={dt:.4f} d, t_end={t_end:.4f} d)  [{mode}] --")
 
     for it in range(1, MAX_NEWTON_ITER + 1):
         used_iter = it
-        nf   = compute_net_flux(grid, state_k)
-        acc  = compute_accumulation(grid, state_n, state_k, dt)
+        nf    = compute_net_flux(grid, state_k)
+        acc   = compute_accumulation(grid, state_n, state_k, dt)
         resid = compute_residual(nf, acc)
         norm  = residual_norm(resid, nf, acc)
         norm_final = norm
 
-        # Cek konvergensi kriteria 1: residual norm
+        # ── Konvergensi ───────────────────────────────────────────────────
         crit1 = norm <= RESID_TOL
 
-        # Cek konvergensi kriteria 2: perubahan parameter
         if prev_state_for_delta is not None:
             n_cells = len(state_k["p"])
             max_dp_rel = max(
-                abs(state_k["p"][i] - prev_state_for_delta["p"][i]) / max(abs(prev_state_for_delta["p"][i]), 1.0)
+                abs(state_k["p"][i] - prev_state_for_delta["p"][i])
+                / max(abs(prev_state_for_delta["p"][i]), 1.0)
                 for i in range(n_cells)
             )
             max_dsw = max(abs(state_k["sw"][i] - prev_state_for_delta["sw"][i]) for i in range(n_cells))
@@ -770,14 +818,14 @@ def run_timestep(
 
         if VERBOSE_NEWTON:
             if crit1 and crit2:
-                status = "  <- KONVERGEN"
+                tag = "  <- KONVERGEN"
             elif crit1:
-                status = "  (norm OK, param belum)"
+                tag = "  (norm OK, param belum)"
             elif crit2:
-                status = "  (param OK, norm belum)"
+                tag = "  (param OK, norm belum)"
             else:
-                status = ""
-            print(f"    Iter {it:>2}: norm={norm:.4e}  crit1={crit1}  crit2={crit2}{status}")
+                tag = ""
+            print(f"    Iter {it:>2}: norm={norm:.4e}  crit1={crit1}  crit2={crit2}{tag}")
 
         if crit1 and crit2:
             converged = True
@@ -787,21 +835,45 @@ def run_timestep(
 
         prev_state_for_delta = _state_copy(state_k)
 
-        # Bangun Jacobian dan selesaikan sistem linear
+        # ── Bangun / update Jacobian ──────────────────────────────────────
+        need_full = (
+            J_current is None                         # belum ada J sama sekali
+            or not use_quasi                          # mode full Newton
+            or (it % QN_REFRESH_EVERY == 1 and it > 1)  # refresh berkala
+        )
+
+        if need_full:
+            J_current = assemble_jacobian(grid, state_n, state_k, dt)
+            if VERBOSE_NEWTON and use_quasi:
+                print(f"      [J: assembe penuh iter {it}]")
+        elif r_prev is not None and x_prev is not None:
+            # Broyden rank-1 update
+            n_cells = len(state_k["p"])
+            x_cur = state_k["p"] + state_k["sw"] + state_k["sg"]
+            s = [x_cur[i] - x_prev[i] for i in range(len(x_cur))]
+            y = [resid["vec"][i] - r_prev[i] for i in range(len(r_prev))]
+            J_current = broyden_update(J_current, s, y)
+            if VERBOSE_NEWTON:
+                print(f"      [J: Broyden update iter {it}]")
+
+        # Simpan residual & state untuk Broyden iterasi berikutnya
+        r_prev = list(resid["vec"])
+        x_prev = state_k["p"] + state_k["sw"] + state_k["sg"]
+
+        # ── Selesaikan sistem linear dan update state ─────────────────────
         try:
-            J     = assemble_jacobian(grid, state_n, state_k, dt)
-            r_neg = [-v for v in resid["vec"]]   # RHS = −R
-            delta = gauss_solve(J, r_neg)
+            r_neg   = [-v for v in resid["vec"]]
+            delta   = gauss_solve(J_current, r_neg)
             state_k = apply_correction(state_k, delta)
         except ValueError as e:
             if VERBOSE_NEWTON:
-                print(f"    [!] Solver gagal ({e}), gunakan relaksasi tekanan.")
-            # Fallback: relaksasi sederhana
+                print(f"    [!] Solver gagal ({e}), relaksasi tekanan.")
             p_new = [max(14.7, state_k["p"][i] - 0.02 * resid["total"][i])
                      for i in range(len(state_k["p"]))]
-            state_k = {"p": p_new, "sw": list(state_k["sw"]), "sg": list(state_k["sg"])}
+            state_k   = {"p": p_new, "sw": list(state_k["sw"]), "sg": list(state_k["sg"])}
+            J_current = None   # paksa reassemble di iterasi berikutnya
 
-    return state_k, converged, norm_final, used_iter
+    return state_k, converged, norm_final, used_iter, J_current
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LOOP SIMULASI UTAMA
@@ -818,10 +890,11 @@ def run_simulation(grid: dict) -> None:
     state = init_state(grid["cells"])
     print_state(state, "STATE AWAL")
 
-    t       = 0.0
-    dt      = DT_INITIAL
-    step_no = 0
+    t        = 0.0
+    dt       = DT_INITIAL
+    step_no  = 0
     step_log: list[dict] = []
+    J_carried: list[list[float]] | None = None   # Jacobian dibawa antar timestep
 
     while t < MAX_TIME - 1e-12:
         remaining = MAX_TIME - t
@@ -831,11 +904,15 @@ def run_simulation(grid: dict) -> None:
 
         _hdr(f"TIMESTEP {step_no}  →  t = {t:.4f} + {trial_dt:.4f} = {t_end:.4f} hari")
 
-        accepted   = False
-        retry      = 0
+        # Timestep 1 selalu full Newton; quasi-Newton mulai timestep 2
+        J_init = J_carried if (QUASI_NEWTON and step_no > 1) else None
+
+        accepted    = False
+        retry       = 0
         final_state = state
         final_norm  = 1e30
         final_iter  = 0
+        final_J     = J_init
 
         for retry in range(MAX_RETRIES + 1):
             if retry > 0:
@@ -847,17 +924,21 @@ def run_simulation(grid: dict) -> None:
                     print("  [!] dt minimum tercapai, hentikan simulasi.")
                     break
 
-            new_state, conv, norm, n_iter = run_timestep(grid, state, trial_dt, t_end, step_no)
+            new_state, conv, norm, n_iter, J_out = run_timestep(
+                grid, state, trial_dt, t_end, step_no, J_prev=J_init
+            )
 
             final_state = new_state
             final_norm  = norm
             final_iter  = n_iter
+            final_J     = J_out
 
             if conv:
                 accepted = True
                 break
             else:
                 print(f"  ✗ Tidak konvergen (norm={norm:.4e}), retry...")
+                J_init = None   # reset J saat retry agar full Newton
 
         # ── Tampilkan state setelah step ──────────────────────────────────
         conv_str = "✓ konvergen" if accepted else "✗ GAGAL"
@@ -881,9 +962,10 @@ def run_simulation(grid: dict) -> None:
             break
 
         # ── Accept ───────────────────────────────────────────────────────
-        state = final_state
-        t     = t_end
-        dt    = trial_dt * GROWTH_FACTOR
+        state     = final_state
+        J_carried = final_J    # bawa Jacobian ke timestep berikutnya
+        t         = t_end
+        dt        = trial_dt * GROWTH_FACTOR
 
     # ══════════════════════════════════════════════════════════════════════
     # RINGKASAN AKHIR

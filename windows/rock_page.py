@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QFrame,
+	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QHeaderView,
 	QLabel,
@@ -36,6 +38,11 @@ def _make_table(headers: list[str]) -> QTableWidget:
 	hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
 	for i in range(1, len(headers)):
 		hh.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+	shadow = QGraphicsDropShadowEffect(t)
+	shadow.setBlurRadius(16)
+	shadow.setColor(QColor(15, 23, 42, 20))
+	shadow.setOffset(0, 3)
+	t.setGraphicsEffect(shadow)
 	return t
 
 
@@ -102,6 +109,7 @@ class RockPage(QWidget):
 		self.clear_button.setObjectName("pvtDangerButton")
 		for b in (self.load_button, self.clear_button):
 			b.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+			b.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_row.addWidget(self.load_button)
 		btn_row.addStretch()
 		btn_row.addWidget(self.clear_button)

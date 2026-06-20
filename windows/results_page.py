@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import Qt, QPointF, QRect, QRectF, QSize, Signal
+from PySide6.QtCore import Qt, QPointF, QRect, QRectF, QSize, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QLinearGradient, QPolygonF
 from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QComboBox,
 	QFrame,
+	QGraphicsDropShadowEffect,
 	QGridLayout,
 	QHBoxLayout,
 	QHeaderView,
@@ -285,19 +286,57 @@ def _repolish(widget: QWidget) -> None:
 	widget.style().polish(widget)
 
 
-def _make_card(title: str) -> tuple[QFrame, QLabel]:
+def _add_shadow(widget: QWidget, blur: int = 18, alpha: int = 20, dy: int = 3) -> None:
+	"""Attach a soft drop shadow, matching the elevated-card look used elsewhere in the app."""
+	effect = QGraphicsDropShadowEffect(widget)
+	effect.setBlurRadius(blur)
+	effect.setColor(QColor(15, 23, 42, alpha))
+	effect.setOffset(0, dy)
+	widget.setGraphicsEffect(effect)
+
+
+def _icon_badge(letter: str, color: str, size: int = 20) -> QLabel:
+	"""Small circular colored badge with a letter, matching the icon-badge cards used elsewhere in the app."""
+	lbl = QLabel(letter)
+	lbl.setFixedSize(size, size)
+	lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+	lbl.setStyleSheet(
+		f"background-color: {color}; color: #ffffff; border-radius: {size // 2}px; "
+		f"font-size: {max(7, int(size * 0.48))}px; font-weight: 800;"
+	)
+	return lbl
+
+
+def _title_row(title_label: QLabel, icon: str, color: str) -> QHBoxLayout:
+	"""Wrap an existing title QLabel with a leading icon badge."""
+	row = QHBoxLayout()
+	row.setContentsMargins(0, 0, 0, 0)
+	row.setSpacing(8)
+	row.addWidget(_icon_badge(icon, color))
+	row.addWidget(title_label, 1)
+	return row
+
+
+def _make_card(title: str, icon: str | None = None, color: str = "#0891b2") -> tuple[QFrame, QLabel]:
 	"""Return (card QFrame, title QLabel)."""
 	card = QFrame()
 	card.setObjectName("resultCard")
+	_add_shadow(card)
 	lay = QVBoxLayout(card)
 	lay.setContentsMargins(14, 10, 14, 12)
 	lay.setSpacing(6)
+	hdr_row = QHBoxLayout()
+	hdr_row.setContentsMargins(0, 0, 0, 0)
+	hdr_row.setSpacing(8)
+	if icon:
+		hdr_row.addWidget(_icon_badge(icon, color))
 	hdr = QLabel(title.upper())
 	hdr.setObjectName("resultCardTitle")
+	hdr_row.addWidget(hdr, 1)
 	sep = QFrame()
 	sep.setFrameShape(QFrame.Shape.HLine)
 	sep.setObjectName("resultCardSep")
-	lay.addWidget(hdr)
+	lay.addLayout(hdr_row)
 	lay.addWidget(sep)
 	return card, hdr
 
@@ -317,18 +356,25 @@ def _add_row(card: QFrame, label: str, value: str) -> QLabel:
 	return val_w
 
 
-def _make_stat_card(title: str) -> tuple[QFrame, QLabel]:
+def _make_stat_card(title: str, icon: str | None = None, color: str = "#0891b2") -> tuple[QFrame, QLabel]:
 	card = QFrame()
 	card.setObjectName("resultStatCard")
+	_add_shadow(card, blur=14, alpha=16, dy=2)
 	lay = QVBoxLayout(card)
 	lay.setContentsMargins(12, 10, 12, 10)
 	lay.setSpacing(4)
+	title_row = QHBoxLayout()
+	title_row.setContentsMargins(0, 0, 0, 0)
+	title_row.setSpacing(6)
+	if icon:
+		title_row.addWidget(_icon_badge(icon, color, size=16))
 	title_lbl = QLabel(title)
 	title_lbl.setObjectName("resultStatTitle")
+	title_row.addWidget(title_lbl, 1)
 	value_lbl = QLabel("-")
 	value_lbl.setObjectName("resultStatValue")
 	value_lbl.setWordWrap(True)
-	lay.addWidget(title_lbl)
+	lay.addLayout(title_row)
 	lay.addWidget(value_lbl)
 	return card, value_lbl
 
@@ -637,11 +683,13 @@ class _JacobianCanvas(QWidget):
 		self._zoom   = zoom
 		self._maxabs = max((abs(v) for row in data for v in row), default=0.0)
 		self.updateGeometry()
+		self.adjustSize()   # QScrollArea.setWidget() doesn't auto-apply sizeHint changes
 		self.update()
 
 	def set_zoom(self, zoom: float) -> None:
 		self._zoom = zoom
 		self.updateGeometry()
+		self.adjustSize()   # QScrollArea.setWidget() doesn't auto-apply sizeHint changes
 		self.update()
 
 	# ── geometry ─────────────────────────────────────────────────────────────
@@ -668,6 +716,14 @@ class _JacobianCanvas(QWidget):
 
 	def minimumSizeHint(self) -> QSize:
 		return self.sizeHint()
+
+	def natural_size(self) -> QSize:
+		"""Size at zoom = 1.0, used to compute a fit-to-viewport zoom factor."""
+		n = len(self._data)
+		if n == 0:
+			return QSize(400, 200)
+		return QSize(self._RGW + self._RPW + n * self._CW + 2,
+		             self._CGH + self._CPH + n * self._RH + 2)
 
 	# ── paint ────────────────────────────────────────────────────────────────
 
@@ -820,6 +876,16 @@ class _JacobianCanvas(QWidget):
 
 
 
+class _AutoFitScrollArea(QScrollArea):
+	"""QScrollArea that emits `resized` so its content can refit to the new viewport."""
+
+	resized = Signal()
+
+	def resizeEvent(self, event) -> None:
+		super().resizeEvent(event)
+		self.resized.emit()
+
+
 class ResultsPage(QWidget):
 	"""Results viewer — grid symmetry checker, residual bars, convergence log."""
 
@@ -851,6 +917,7 @@ class ResultsPage(QWidget):
 		_go_run = QPushButton("Go to Run", self._header)
 		_go_run.setObjectName("resultActionButton")
 		_go_run.setFixedWidth(100)
+		_go_run.setCursor(Qt.CursorShape.PointingHandCursor)
 		_go_run.clicked.connect(self.goToRunRequested)
 		_hrow.addWidget(_title)
 		_hrow.addWidget(self._badge)
@@ -901,6 +968,7 @@ class ResultsPage(QWidget):
 		# Controls row
 		toolbar = QWidget(w)
 		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		ctrl = QHBoxLayout(toolbar)
 		ctrl.setContentsMargins(12, 9, 12, 9)
 		ctrl.setSpacing(14)
@@ -968,14 +1036,14 @@ class ResultsPage(QWidget):
 		right_lay.setContentsMargins(4, 0, 0, 0)
 		right_lay.setSpacing(10)
 
-		self._sel_card, self._sel_card_title = _make_card("Sel Dipilih: —")
+		self._sel_card, self._sel_card_title = _make_card("Sel Dipilih: —", icon="S", color="#0891b2")
 		self._lbl_sel_p   = _add_row(self._sel_card, "Pressure", "—")
 		self._lbl_sel_sw  = _add_row(self._sel_card, "Sw", "—")
 		self._lbl_sel_sg  = _add_row(self._sel_card, "Sg", "—")
 		self._lbl_sel_res = _add_row(self._sel_card, "Residual", "—")
 		right_lay.addWidget(self._sel_card)
 
-		self._sym_card, _ = _make_card("Cek Simetri")
+		self._sym_card, _ = _make_card("Cek Simetri", icon="C", color="#10b981")
 		self._sym_body = QVBoxLayout()
 		self._sym_body.setSpacing(5)
 		_h = QLabel("Pilih sel untuk melihat cek simetri.")
@@ -1005,13 +1073,20 @@ class ResultsPage(QWidget):
 		# ── Toolbar row ──────────────────────────────────────────────────────
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
 
 		self._resid_status = QLabel("Jalankan simulasi dulu.")
 		self._resid_status.setObjectName("resultStatusLine")
+		self._resid_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 		tbar_lay.addWidget(self._resid_status, 1)
+
+		self._resid_conv_badge = QLabel("—")
+		self._resid_conv_badge.setObjectName("resultBadge")
+		self._resid_conv_badge.setProperty("status", "empty")
+		tbar_lay.addWidget(self._resid_conv_badge)
 
 		step_lbl = QLabel("Step:")
 		step_lbl.setObjectName("resultToolbarLabel")
@@ -1025,16 +1100,54 @@ class ResultsPage(QWidget):
 
 		vlay.addWidget(toolbar)
 
+		# ── Per-phase max-residual summary chips ──────────────────────────────
+		chips_row = QHBoxLayout()
+		chips_row.setContentsMargins(0, 0, 0, 0)
+		chips_row.setSpacing(10)
+		self._resid_phase_lbls: dict[str, QLabel] = {}
+		for key, name, icon, color in (
+			("oil",   "Oil",   "O", "#b45309"),
+			("water", "Water", "W", "#2563eb"),
+			("gas",   "Gas",   "G", "#059669"),
+		):
+			chip = QFrame()
+			chip.setObjectName("resultCard")
+			_add_shadow(chip, blur=10, alpha=12, dy=2)
+			chip_lay = QVBoxLayout(chip)
+			chip_lay.setContentsMargins(12, 8, 12, 9)
+			chip_lay.setSpacing(3)
+			name_lbl = QLabel(f"MAX RESIDUAL — {name.upper()}")
+			name_lbl.setObjectName("resultCardTitle")
+			chip_lay.addLayout(_title_row(name_lbl, icon, color))
+			value_lbl = QLabel("—")
+			value_lbl.setStyleSheet(
+				f"font-family: Consolas; font-size: 13pt; font-weight: 800; color: {color};"
+			)
+			chip_lay.addWidget(value_lbl)
+			self._resid_phase_lbls[key] = value_lbl
+			chips_row.addWidget(chip, 1)
+		vlay.addLayout(chips_row)
+
 		# ── Unified residual table ────────────────────────────────────────────
 		card = QFrame()
 		card.setObjectName("resultCard")
+		_add_shadow(card)
 		card_lay = QVBoxLayout(card)
 		card_lay.setContentsMargins(12, 10, 12, 10)
 		card_lay.setSpacing(6)
 
 		card_title = QLabel("RESIDUAL PER SEL")
 		card_title.setObjectName("resultCardTitle")
-		card_lay.addWidget(card_title)
+		title_row = _title_row(card_title, "R", "#0891b2")
+		title_row.addStretch(1)
+		legend = QLabel(
+			'<span style="color:#1d4ed8;">●</span> Positif&nbsp;&nbsp;'
+			'<span style="color:#b91c1c;">●</span> Negatif&nbsp;&nbsp;'
+			'<span style="color:#94a3b8;">●</span> ≈ 0'
+		)
+		legend.setObjectName("resultLegendLabel")
+		title_row.addWidget(legend)
+		card_lay.addLayout(title_row)
 
 		self._resid_table = QTableWidget()
 		self._resid_table.setObjectName("resultResidTable")
@@ -1046,13 +1159,14 @@ class ResultsPage(QWidget):
 		self._resid_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
 		self._resid_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self._resid_table.verticalHeader().setVisible(False)
+		self._resid_table.verticalHeader().setDefaultSectionSize(30)
 		self._resid_table.setShowGrid(False)
 		rh = self._resid_table.horizontalHeader()
 		rh.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
 		self._resid_table.setColumnWidth(0, 62)
 		for col in (1, 2, 3):
 			rh.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-		self._resid_table.setAlternatingRowColors(False)
+		self._resid_table.setAlternatingRowColors(True)
 		card_lay.addWidget(self._resid_table, 1)
 		vlay.addWidget(card, 1)
 		return w
@@ -1077,12 +1191,13 @@ class ResultsPage(QWidget):
 		# ── Table card ───────────────────────────────────────────────────
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
+		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 		tc_title = QLabel("RIWAYAT KONVERGENSI NEWTON")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addWidget(tc_title)
+		tc_lay.addLayout(_title_row(tc_title, "K", "#2563eb"))
 
 		self._conv_table = QTableWidget()
 		self._conv_table.setObjectName("resultConvTable")
@@ -1107,12 +1222,13 @@ class ResultsPage(QWidget):
 		# ── Chart card ───────────────────────────────────────────────────
 		chart_card = QFrame()
 		chart_card.setObjectName("resultCard")
+		_add_shadow(chart_card)
 		cc_lay = QVBoxLayout(chart_card)
 		cc_lay.setContentsMargins(12, 10, 12, 10)
 		cc_lay.setSpacing(6)
 		cc_title = QLabel("KONVERGENSI  NORM vs STEP")
 		cc_title.setObjectName("resultCardTitle")
-		cc_lay.addWidget(cc_title)
+		cc_lay.addLayout(_title_row(cc_title, "N", "#7c3aed"))
 		self._conv_chart = _NormChartWidget()
 		cc_lay.addWidget(self._conv_chart, 1)
 		splitter.addWidget(chart_card)
@@ -1127,6 +1243,7 @@ class ResultsPage(QWidget):
 
 	def _build_jacobian_tab(self) -> QWidget:
 		self._jacobian_zoom_idx = _JACOBIAN_ZOOM_DEFAULT_IDX
+		self._jacobian_autofit  = True
 
 		w = QWidget()
 		w.setObjectName("resultJacobianTab")
@@ -1137,12 +1254,14 @@ class ResultsPage(QWidget):
 		# ── Toolbar ───────────────────────────────────────────────────
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(8)
 
 		self._jacobian_status = QLabel("Jalankan simulasi dulu.")
 		self._jacobian_status.setObjectName("resultStatusLine")
+		self._jacobian_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 		tbar_lay.addWidget(self._jacobian_status, 1)
 
 		step_lbl = QLabel("Step:")
@@ -1156,6 +1275,16 @@ class ResultsPage(QWidget):
 		tbar_lay.addWidget(self.jacobian_step_combo)
 
 		tbar_lay.addSpacing(16)
+
+		self.btn_jacobian_fit = QPushButton("⛶  Fit Layar")
+		self.btn_jacobian_fit.setObjectName("resultJacobianFitBtn")
+		self.btn_jacobian_fit.setCheckable(True)
+		self.btn_jacobian_fit.setChecked(True)
+		self.btn_jacobian_fit.setCursor(Qt.CursorShape.PointingHandCursor)
+		self.btn_jacobian_fit.setToolTip("Sesuaikan matriks otomatis ke ukuran jendela")
+		self.btn_jacobian_fit.clicked.connect(self._on_jacobian_fit_toggled)
+		tbar_lay.addWidget(self.btn_jacobian_fit)
+
 		zoom_lbl = QLabel("Zoom:")
 		zoom_lbl.setObjectName("resultToolbarLabel")
 		tbar_lay.addWidget(zoom_lbl)
@@ -1163,6 +1292,7 @@ class ResultsPage(QWidget):
 		btn_zoom_out = QPushButton("−")
 		btn_zoom_out.setObjectName("resultToolbarBtn")
 		btn_zoom_out.setFixedWidth(28)
+		btn_zoom_out.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_zoom_out.setToolTip("Zoom out")
 		btn_zoom_out.clicked.connect(self._jacobian_zoom_out)
 		tbar_lay.addWidget(btn_zoom_out)
@@ -1176,6 +1306,7 @@ class ResultsPage(QWidget):
 		btn_zoom_in = QPushButton("+")
 		btn_zoom_in.setObjectName("resultToolbarBtn")
 		btn_zoom_in.setFixedWidth(28)
+		btn_zoom_in.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_zoom_in.setToolTip("Zoom in")
 		btn_zoom_in.clicked.connect(self._jacobian_zoom_in)
 		tbar_lay.addWidget(btn_zoom_in)
@@ -1183,6 +1314,7 @@ class ResultsPage(QWidget):
 		btn_zoom_reset = QPushButton("↺")
 		btn_zoom_reset.setObjectName("resultToolbarBtn")
 		btn_zoom_reset.setFixedWidth(28)
+		btn_zoom_reset.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_zoom_reset.setToolTip("Reset zoom")
 		btn_zoom_reset.clicked.connect(self._jacobian_zoom_reset)
 		tbar_lay.addWidget(btn_zoom_reset)
@@ -1192,11 +1324,13 @@ class ResultsPage(QWidget):
 		# ── Canvas inside a scroll area ───────────────────────────────
 		self._jacobian_canvas = _JacobianCanvas()
 
-		scroll = QScrollArea()
+		scroll = _AutoFitScrollArea()
 		scroll.setObjectName("resultJacobianScroll")
 		scroll.setWidget(self._jacobian_canvas)
 		scroll.setWidgetResizable(False)   # canvas owns its sizeHint
-		scroll.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+		scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
+		scroll.resized.connect(self._on_jacobian_viewport_resized)
+		self._jacobian_scroll = scroll
 
 		vlay.addWidget(scroll, 1)
 		return w
@@ -1238,8 +1372,8 @@ class ResultsPage(QWidget):
 			n_cells = 0
 			display_data = jacobian
 
-		z = _JACOBIAN_ZOOM_STEPS[self._jacobian_zoom_idx]
-		self._jacobian_canvas.set_data(display_data, n_cells, z)
+		self._jacobian_canvas.set_data(display_data, n_cells, 1.0)
+		self._apply_jacobian_zoom()
 
 		n = len(display_data)
 		max_abs = max((abs(v) for row in display_data for v in row), default=0.0)
@@ -1309,21 +1443,52 @@ class ResultsPage(QWidget):
 		self._populate_jacobian_display()
 
 	def _jacobian_zoom_in(self) -> None:
+		self._set_jacobian_autofit(False)
 		if self._jacobian_zoom_idx < len(_JACOBIAN_ZOOM_STEPS) - 1:
 			self._jacobian_zoom_idx += 1
 			self._apply_jacobian_zoom()
 
 	def _jacobian_zoom_out(self) -> None:
+		self._set_jacobian_autofit(False)
 		if self._jacobian_zoom_idx > 0:
 			self._jacobian_zoom_idx -= 1
 			self._apply_jacobian_zoom()
 
 	def _jacobian_zoom_reset(self) -> None:
 		self._jacobian_zoom_idx = _JACOBIAN_ZOOM_DEFAULT_IDX
+		self._set_jacobian_autofit(True)
 		self._apply_jacobian_zoom()
 
+	def _on_jacobian_fit_toggled(self, checked: bool) -> None:
+		self._set_jacobian_autofit(checked)
+		self._apply_jacobian_zoom()
+
+	def _set_jacobian_autofit(self, enabled: bool) -> None:
+		self._jacobian_autofit = enabled
+		self.btn_jacobian_fit.setChecked(enabled)
+
+	def _on_jacobian_viewport_resized(self) -> None:
+		if not self._jacobian_autofit:
+			return
+		if not hasattr(self, "_jacobian_resize_timer"):
+			self._jacobian_resize_timer = QTimer(self)
+			self._jacobian_resize_timer.setSingleShot(True)
+			self._jacobian_resize_timer.timeout.connect(self._apply_jacobian_zoom)
+		self._jacobian_resize_timer.start(30)
+
+	def _compute_jacobian_fit_zoom(self) -> float:
+		natural  = self._jacobian_canvas.natural_size()
+		viewport = self._jacobian_scroll.viewport().size()
+		avail_w  = max(1, viewport.width()  - 4)
+		avail_h  = max(1, viewport.height() - 4)
+		zoom = min(avail_w / natural.width(), avail_h / natural.height())
+		return max(0.05, min(zoom, 8.0))
+
 	def _apply_jacobian_zoom(self) -> None:
-		z = _JACOBIAN_ZOOM_STEPS[self._jacobian_zoom_idx]
+		if self._jacobian_autofit:
+			z = self._compute_jacobian_fit_zoom()
+		else:
+			z = _JACOBIAN_ZOOM_STEPS[self._jacobian_zoom_idx]
 		self._jacobian_zoom_label.setText(f"{int(z * 100)}%")
 		self._jacobian_canvas.set_zoom(z)
 
@@ -1341,12 +1506,14 @@ class ResultsPage(QWidget):
 		# Toolbar row
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
 
 		self._corrections_status = QLabel("Jalankan simulasi dulu.")
 		self._corrections_status.setObjectName("resultStatusLine")
+		self._corrections_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 		tbar_lay.addWidget(self._corrections_status, 1)
 
 		step_lbl = QLabel("Step:")
@@ -1378,13 +1545,14 @@ class ResultsPage(QWidget):
 		# Left Card: Numerical values table
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
+		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 
 		tc_title = QLabel("NILAI KOREKSI PER CELL")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addWidget(tc_title)
+		tc_lay.addLayout(_title_row(tc_title, "K", "#d97706"))
 
 		self.corrections_table = QTableWidget()
 		self.corrections_table.setObjectName("resultCorrectionsTable")
@@ -1407,13 +1575,14 @@ class ResultsPage(QWidget):
 		# Right Card: Chart
 		chart_card = QFrame()
 		chart_card.setObjectName("resultCard")
+		_add_shadow(chart_card)
 		cc_lay = QVBoxLayout(chart_card)
 		cc_lay.setContentsMargins(12, 10, 12, 10)
 		cc_lay.setSpacing(6)
 
 		cc_title = QLabel("GRAFIK KOREKSI NEWTON")
 		cc_title.setObjectName("resultCardTitle")
-		cc_lay.addWidget(cc_title)
+		cc_lay.addLayout(_title_row(cc_title, "G", "#e11d48"))
 
 		self.corrections_chart = _CorrectionChartWidget()
 		cc_lay.addWidget(self.corrections_chart, 1)
@@ -1572,12 +1741,12 @@ class ResultsPage(QWidget):
 		stats_grid.setHorizontalSpacing(10)
 		stats_grid.setVerticalSpacing(10)
 
-		card_steps, self._sum_steps = _make_stat_card("Steps")
-		card_time, self._sum_time = _make_stat_card("Final Time")
-		card_conv, self._sum_converged = _make_stat_card("Converged")
-		card_maxr, self._sum_maxr = _make_stat_card("Max Residual")
-		card_att, self._sum_attempts = _make_stat_card("Attempts")
-		card_rej, self._sum_rejected = _make_stat_card("Rejected")
+		card_steps, self._sum_steps = _make_stat_card("Steps", icon="#", color="#0891b2")
+		card_time, self._sum_time = _make_stat_card("Final Time", icon="T", color="#2563eb")
+		card_conv, self._sum_converged = _make_stat_card("Converged", icon="✓", color="#10b981")
+		card_maxr, self._sum_maxr = _make_stat_card("Max Residual", icon="R", color="#dc2626")
+		card_att, self._sum_attempts = _make_stat_card("Attempts", icon="A", color="#7c3aed")
+		card_rej, self._sum_rejected = _make_stat_card("Rejected", icon="X", color="#ef4444")
 
 		stats_grid.addWidget(card_steps, 0, 0)
 		stats_grid.addWidget(card_time, 0, 1)
@@ -1587,7 +1756,7 @@ class ResultsPage(QWidget):
 		stats_grid.addWidget(card_rej, 1, 2)
 		vlay.addLayout(stats_grid)
 
-		phase_card, _ = _make_card("Residual Per Fase")
+		phase_card, _ = _make_card("Residual Per Fase", icon="R", color="#f59e0b")
 		self._sum_oil = _add_row(phase_card, "Oil", "-")
 		self._sum_water = _add_row(phase_card, "Water", "-")
 		self._sum_gas = _add_row(phase_card, "Gas", "-")
@@ -1612,19 +1781,26 @@ class ResultsPage(QWidget):
 		self.retry_scope_combo.addItems(["Latest Step Only", "All Steps"])
 		self.retry_status_combo.addItems(["All Attempts", "Rejected Only", "Accepted Only"])
 		self.retry_stats_label = QLabel("Retry table: 0 row(s)")
-		self.retry_stats_label.setObjectName("resultRowLabel")
-		toolbar = QHBoxLayout()
+		self.retry_stats_label.setObjectName("resultStatusLine")
+
+		toolbar = QWidget()
+		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
+		tbar_lay = QHBoxLayout(toolbar)
+		tbar_lay.setContentsMargins(12, 8, 12, 8)
+		tbar_lay.setSpacing(10)
 		scope_lbl = QLabel("Scope:")
 		scope_lbl.setObjectName("resultToolbarLabel")
-		toolbar.addWidget(scope_lbl)
-		toolbar.addWidget(self.retry_scope_combo)
+		tbar_lay.addWidget(scope_lbl)
+		tbar_lay.addWidget(self.retry_scope_combo)
 		status_lbl = QLabel("Status:")
 		status_lbl.setObjectName("resultToolbarLabel")
-		toolbar.addWidget(status_lbl)
-		toolbar.addWidget(self.retry_status_combo)
-		toolbar.addStretch(1)
-		toolbar.addWidget(self.retry_stats_label)
-		vlay.addLayout(toolbar)
+		tbar_lay.addWidget(status_lbl)
+		tbar_lay.addWidget(self.retry_status_combo)
+		tbar_lay.addStretch(1)
+		tbar_lay.addWidget(self.retry_stats_label)
+		vlay.addWidget(toolbar)
+
 		self.retry_table = QTableWidget(0, 7)
 		self.retry_table.setObjectName("resultRetryTable")
 		self.retry_table.setHorizontalHeaderLabels(
@@ -1636,6 +1812,7 @@ class ResultsPage(QWidget):
 		self.retry_table.setSortingEnabled(True)
 		self.retry_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 		self.retry_table.verticalHeader().setVisible(False)
+		_add_shadow(self.retry_table, blur=14, alpha=16, dy=2)
 		vlay.addWidget(self.retry_table)
 		return w
 
@@ -1659,6 +1836,7 @@ class ResultsPage(QWidget):
 				btn.setProperty("mode", "normal")
 				btn.setFixedSize(58, 58)
 				btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+				btn.setCursor(Qt.CursorShape.PointingHandCursor)
 				btn.clicked.connect(lambda _=False, cell=n: self._select_cell(cell))
 				self._cell_btns[n] = btn
 				self._grid_layout.addWidget(
@@ -1820,21 +1998,27 @@ class ResultsPage(QWidget):
 		max_water = max((abs(v) for v in water), default=1e-30)
 		max_gas   = max((abs(v) for v in gas),   default=1e-30)
 
-		def _heat(value: float, scale: float) -> QColor:
-			"""Blue (low) → white → red (high) intensity."""
-			f = min(abs(value) / max(scale, 1e-30), 1.0)
-			if f < 0.5:
-				t = f * 2
-				r = int(210 + t * (255 - 210))
-				g = int(230 + t * (255 - 230))
-				b = int(250 + t * (255 - 250))
-			else:
-				t = (f - 0.5) * 2
-				r = 255
-				g = int(255 - t * (255 - 180))
-				b = int(255 - t * 255)
-			return QColor(r, g, b)
+		def _blend(c1: tuple[int, int, int], c2: tuple[int, int, int], f: float) -> QColor:
+			return QColor(
+				int(c1[0] + f * (c2[0] - c1[0])),
+				int(c1[1] + f * (c2[1] - c1[1])),
+				int(c1[2] + f * (c2[2] - c1[2])),
+			)
 
+		def _heat(value: float, scale: float) -> tuple[QColor, QColor]:
+			"""Sign-aware diverging scale: blue = positive, red = negative, grey ≈ 0."""
+			mag = abs(value) / max(scale, 1e-30)
+			t = min(math.sqrt(mag), 1.0)
+			if t < 1e-6:
+				return QColor("#f8fafc"), QColor("#94a3b8")
+			if value > 0:
+				bg = _blend((219, 234, 254), (29, 78, 216), t)   # blue-100 → blue-700
+			else:
+				bg = _blend((254, 226, 226), (185, 28, 28), t)   # red-100 → red-700
+			fg = QColor("#0f172a") if t < 0.55 else QColor("#ffffff")
+			return bg, fg
+
+		mono_font = QFont("Consolas", 9)
 		self._resid_table.setRowCount(n_cells)
 		for i in range(n_cells):
 			v_oil   = oil[i]   if i < len(oil)   else 0.0
@@ -1843,17 +2027,26 @@ class ResultsPage(QWidget):
 
 			cell_item = QTableWidgetItem(f"Sel {i + 1}")
 			cell_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+			cell_item.setFont(QFont("Segoe UI Variable Text", 9, QFont.Weight.Bold))
 			self._resid_table.setItem(i, 0, cell_item)
 
 			for col, val, mx in [(1, v_oil, max_oil), (2, v_water, max_water), (3, v_gas, max_gas)]:
-				it = QTableWidgetItem(f"{val:.4e}")
+				it = QTableWidgetItem(f"{val:+.4e}")
 				it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-				it.setBackground(_heat(val, mx))
+				it.setFont(mono_font)
+				bg, fg = _heat(val, mx)
+				it.setBackground(bg)
+				it.setForeground(fg)
 				self._resid_table.setItem(i, col, it)
 
 	def _refresh_residual_tab(self) -> None:
 		if self._run_result is None or not self._run_result.steps:
 			self._resid_status.setText("Jalankan simulasi dulu.")
+			self._resid_conv_badge.setText("—")
+			self._resid_conv_badge.setProperty("status", "empty")
+			_repolish(self._resid_conv_badge)
+			for lbl in self._resid_phase_lbls.values():
+				lbl.setText("—")
 			self._resid_step_combo.blockSignals(True)
 			self._resid_step_combo.clear()
 			self._resid_step_combo.blockSignals(False)
@@ -1882,12 +2075,14 @@ class ResultsPage(QWidget):
 			len(step.gas_residual_per_cell or []),
 		)
 		self._resid_status.setText(
-			f"{n_cells} sel  ·  "
-			f"Max Oil {step.max_oil_residual:.3e}  "
-			f"Water {step.max_water_residual:.3e}  "
-			f"Gas {step.max_gas_residual:.3e}  "
-			f"{'✓ konvergen' if converged else '✗ belum konvergen'}"
+			f"Step {new_idx + 1}  ·  t = {step.summary.time_days:.2f} hari  ·  {n_cells} sel"
 		)
+		self._resid_conv_badge.setText("✓ Konvergen" if converged else "✗ Belum Konvergen")
+		self._resid_conv_badge.setProperty("status", "ok" if converged else "empty")
+		_repolish(self._resid_conv_badge)
+		self._resid_phase_lbls["oil"].setText(f"{step.max_oil_residual:.4e}")
+		self._resid_phase_lbls["water"].setText(f"{step.max_water_residual:.4e}")
+		self._resid_phase_lbls["gas"].setText(f"{step.max_gas_residual:.4e}")
 		self._populate_resid_table()
 
 	# =========================================================================
@@ -2141,12 +2336,14 @@ class ResultsPage(QWidget):
 		# Toolbar
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
+		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
 
 		self._prop_status = QLabel("Jalankan simulasi dulu.")
 		self._prop_status.setObjectName("resultStatusLine")
+		self._prop_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 		tbar_lay.addWidget(self._prop_status, 1)
 
 		step_lbl = QLabel("Step:")
@@ -2207,13 +2404,14 @@ class ResultsPage(QWidget):
 		# Left Card: Data Table
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
+		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 
 		tc_title = QLabel("TABEL SEMUA PROPERTI PER CELL")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addWidget(tc_title)
+		tc_lay.addLayout(_title_row(tc_title, "P", "#0891b2"))
 
 		self.prop_table = QTableWidget()
 		self.prop_table.setObjectName("resultPropTable")
@@ -2240,13 +2438,14 @@ class ResultsPage(QWidget):
 		# Right Card: Heatmap Grid
 		map_card = QFrame()
 		map_card.setObjectName("resultCard")
+		_add_shadow(map_card)
 		mc_lay = QVBoxLayout(map_card)
 		mc_lay.setContentsMargins(12, 10, 12, 10)
 		mc_lay.setSpacing(6)
 
 		self.map_title = QLabel("PETA GRID HEATMAP: p (psia)")
 		self.map_title.setObjectName("resultCardTitle")
-		mc_lay.addWidget(self.map_title)
+		mc_lay.addLayout(_title_row(self.map_title, "M", "#059669"))
 
 		self.prop_grid_scroll = QScrollArea()
 		self.prop_grid_scroll.setObjectName("resultGridScroll")

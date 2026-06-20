@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from engine.domain.project import ProjectConfig
+from engine.domain.project import PerturbationConfig, ProjectConfig, WellConfig
 from engine.io.project_loader import load_project_json as io_load_project_json
 from engine.io.project_writer import write_project_json
 
@@ -29,9 +29,10 @@ def create_empty_project(name: str = "CoreReservoir") -> ProjectConfig:
 	project.solver.timestep_growth_factor = 1.1
 	project.solver.timestep_shrink_factor = 0.5
 	project.solver.max_step_retries = 8
-	project.solver.max_newton_iterations = 10
-	project.solver.residual_tolerance = 1e-4
-	project.solver.parameter_tolerance = 1e-4
+	project.solver.max_newton_iterations = 20
+	project.solver.residual_tolerance = 1e-5
+	project.solver.parameter_tolerance_pressure = 1e-3
+	project.solver.parameter_tolerance_saturation = 1e-4
 	project.solver.residual_norm_floor = 0.1
 	project.solver.newton_pressure_damping = 0.7
 	project.solver.newton_saturation_damping = 0.7
@@ -50,7 +51,6 @@ def update_project_metadata(
 	name: str | None = None,
 	description: str | None = None,
 	case_name: str | None = None,
-	reference_pressure: float | None = None,
 ) -> ProjectConfig:
 	if name is not None:
 		project_config.name = name
@@ -58,8 +58,6 @@ def update_project_metadata(
 		project_config.description = description
 	if case_name is not None:
 		project_config.run.case_name = case_name
-	if reference_pressure is not None:
-		project_config.reference_data.reference_pressure = reference_pressure
 	project_config.is_dirty = True
 	return project_config
 
@@ -90,11 +88,13 @@ def update_initial_conditions(
 	reference_depth: float,
 	initial_sw: float,
 	initial_sg: float,
+	reference_pressure: float,
 ) -> ProjectConfig:
 	project_config.initial_conditions.reference_depth = reference_depth
 	project_config.initial_conditions.initial_sw = initial_sw
 	project_config.initial_conditions.initial_sg = initial_sg
 	project_config.reference_data.reference_depth = reference_depth
+	project_config.reference_data.reference_pressure = reference_pressure
 	project_config.is_dirty = True
 	return project_config
 
@@ -110,7 +110,8 @@ def update_solver_config(
 	max_step_retries: int | None = None,
 	max_newton_iterations: int | None = None,
 	residual_tolerance: float | None = None,
-	parameter_tolerance: float | None = None,
+	parameter_tolerance_pressure: float | None = None,
+	parameter_tolerance_saturation: float | None = None,
 	residual_norm_floor: float | None = None,
 	newton_pressure_damping: float | None = None,
 	newton_saturation_damping: float | None = None,
@@ -133,8 +134,10 @@ def update_solver_config(
 		project_config.solver.max_newton_iterations = max_newton_iterations
 	if residual_tolerance is not None:
 		project_config.solver.residual_tolerance = residual_tolerance
-	if parameter_tolerance is not None:
-		project_config.solver.parameter_tolerance = parameter_tolerance
+	if parameter_tolerance_pressure is not None:
+		project_config.solver.parameter_tolerance_pressure = parameter_tolerance_pressure
+	if parameter_tolerance_saturation is not None:
+		project_config.solver.parameter_tolerance_saturation = parameter_tolerance_saturation
 	if residual_norm_floor is not None:
 		project_config.solver.residual_norm_floor = residual_norm_floor
 	if newton_pressure_damping is not None:
@@ -353,6 +356,20 @@ def load_example_rock_tables(project_config: ProjectConfig) -> ProjectConfig:
 
 def clear_rock_tables(project_config: ProjectConfig) -> ProjectConfig:
 	project_config.rock_tables.clear()
+	project_config.is_dirty = True
+	return project_config
+
+
+def update_perturbation_config(
+	project_config: ProjectConfig, pert: PerturbationConfig
+) -> ProjectConfig:
+	project_config.perturbation = pert
+	project_config.is_dirty = True
+	return project_config
+
+
+def update_wells(project_config: ProjectConfig, wells: list[WellConfig]) -> ProjectConfig:
+	project_config.wells = [w for w in wells if isinstance(w, WellConfig)]
 	project_config.is_dirty = True
 	return project_config
 

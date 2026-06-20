@@ -38,6 +38,8 @@ from modules.project_service import (
 	update_grid_spec,
 	update_project_metadata,
 	update_solver_config,
+	update_perturbation_config,
+	update_wells,
 )
 from modules.validation_service import validate_project
 
@@ -50,6 +52,8 @@ from windows.results_page import ResultsPage
 from windows.rock_page import RockPage
 from windows.run_page import RunPage
 from windows.connectivity_3d_page import Connectivity3DPage
+from windows.jacobian_page import JacobianPage
+from windows.well_placement_page import WellPlacementPage
 
 
 class _NavSection(QWidget):
@@ -100,6 +104,7 @@ class _NavSection(QWidget):
 		btn.setObjectName("navItem")
 		btn.setCheckable(True)
 		btn.setAutoExclusive(False)
+		btn.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 		self._body_layout.addWidget(btn)
 		self._buttons.append(btn)
@@ -206,6 +211,7 @@ class MainWindow(QMainWindow):
 
 		for btn in (btn_new, btn_open, btn_save):
 			btn.setObjectName("topActionBtn")
+			btn.setCursor(Qt.CursorShape.PointingHandCursor)
 			actions_layout.addWidget(btn)
 
 		btn_new.clicked.connect(self._new_project)
@@ -395,6 +401,8 @@ class MainWindow(QMainWindow):
 		self.run_page = RunPage()
 		self.results_page = ResultsPage()
 		self.connectivity_3d_page = Connectivity3DPage()
+		self.well_placement_page = WellPlacementPage()
+		self.jacobian_page = JacobianPage()
 		self.input_constraints_page = _InputConstraintPage(
 			[
 				("Dashboard", self.dashboard_page),
@@ -411,7 +419,31 @@ class MainWindow(QMainWindow):
 			],
 			self,
 		)
-		self.configuration_page = self.connectivity_3d_page
+		# Tab container for Configuration
+		_config_container = QWidget()
+		_config_container_layout = QVBoxLayout(_config_container)
+		_config_container_layout.setContentsMargins(0, 0, 0, 0)
+		_config_container_layout.setSpacing(0)
+		_config_tabs = QTabWidget()
+		_config_tabs.setObjectName("configTabs")
+		_config_tabs.setStyleSheet("""
+			QTabWidget::pane { border: none; }
+			QTabBar::tab {
+				background-color: #f1f5f9; color: #64748b; border: none;
+				border-bottom: 2px solid transparent;
+				padding: 8px 22px; font-size: 9.5pt; font-weight: 600; min-width: 130px;
+			}
+			QTabBar::tab:selected {
+				color: #0891b2; border-bottom: 2px solid #0891b2;
+				background-color: #ffffff;
+			}
+			QTabBar::tab:hover:!selected { color: #0f172a; background-color: #e2e8f0; }
+		""")
+		_config_tabs.addTab(self.connectivity_3d_page, "Connectivity 3D")
+		_config_tabs.addTab(self.well_placement_page, "Well Placement")
+		_config_tabs.addTab(self.jacobian_page, "Jacobian")
+		_config_container_layout.addWidget(_config_tabs)
+		self.configuration_page = _config_container
 
 		# Add pages to stack
 		self._page_stack.addWidget(self.input_constraints_page)  # index 0
@@ -466,20 +498,28 @@ class MainWindow(QMainWindow):
 		self.run_page.runRequested.connect(self._start_run_simulation)
 		self.run_page.cancelRequested.connect(self._cancel_run_simulation)
 		self.results_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
+		self.well_placement_page.wellsChanged.connect(self._handle_wells_changed)
+		self.jacobian_page.perturbationChanged.connect(self._handle_perturbation_changed)
+
+	def _handle_wells_changed(self, wells: list) -> None:
+		update_wells(self.project_config, wells)
+		self._refresh_pages()
+
+	def _handle_perturbation_changed(self, pert) -> None:
+		update_perturbation_config(self.project_config, pert)
+		self._refresh_pages()
 
 	def _handle_project_changed(
 		self,
 		name: str,
 		description: str,
 		case_name: str,
-		reference_pressure: float,
 	) -> None:
 		update_project_metadata(
 			self.project_config,
 			name=name,
 			description=description,
 			case_name=case_name,
-			reference_pressure=reference_pressure,
 		)
 		self._refresh_pages()
 
@@ -494,7 +534,8 @@ class MainWindow(QMainWindow):
 		max_newton_iterations: int,
 		residual_tolerance: float,
 		residual_norm_floor: float,
-		parameter_tolerance: float,
+		parameter_tolerance_pressure: float,
+		parameter_tolerance_saturation: float,
 		newton_pressure_damping: float,
 		newton_saturation_damping: float,
 		max_pressure_correction: float,
@@ -511,7 +552,8 @@ class MainWindow(QMainWindow):
 			max_newton_iterations=max_newton_iterations,
 			residual_tolerance=residual_tolerance,
 			residual_norm_floor=residual_norm_floor,
-			parameter_tolerance=parameter_tolerance,
+			parameter_tolerance_pressure=parameter_tolerance_pressure,
+			parameter_tolerance_saturation=parameter_tolerance_saturation,
 			newton_pressure_damping=newton_pressure_damping,
 			newton_saturation_damping=newton_saturation_damping,
 			max_pressure_correction=max_pressure_correction,
@@ -544,12 +586,14 @@ class MainWindow(QMainWindow):
 		reference_depth: float,
 		initial_sw: float,
 		initial_sg: float,
+		reference_pressure: float,
 	) -> None:
 		update_initial_conditions(
 			self.project_config,
 			reference_depth=reference_depth,
 			initial_sw=initial_sw,
 			initial_sg=initial_sg,
+			reference_pressure=reference_pressure,
 		)
 		self._refresh_pages()
 
@@ -650,6 +694,8 @@ class MainWindow(QMainWindow):
 		self.results_page.set_project(self.project_config)
 		self.results_page.set_run_result(self.run_result)
 		self.connectivity_3d_page.set_project(self.project_config)
+		self.well_placement_page.set_project(self.project_config)
+		self.jacobian_page.set_project(self.project_config)
 		self._update_window_caption()
 
 	def _update_window_caption(self) -> None:

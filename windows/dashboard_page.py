@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
 	QFrame,
+	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QLabel,
 	QScrollArea,
@@ -54,6 +55,11 @@ class DashboardPage(QWidget):
 		# ── Unified Report Canvas (Flat, clean canvas layout) ─────────────────
 		self.canvas = QFrame(content)
 		self.canvas.setObjectName("resultCard")
+		canvas_shadow = QGraphicsDropShadowEffect(self.canvas)
+		canvas_shadow.setBlurRadius(22)
+		canvas_shadow.setColor(QColor(15, 23, 42, 25))
+		canvas_shadow.setOffset(0, 4)
+		self.canvas.setGraphicsEffect(canvas_shadow)
 		canvas_lay = QVBoxLayout(self.canvas)
 		canvas_lay.setContentsMargins(24, 24, 24, 24)
 		canvas_lay.setSpacing(20)
