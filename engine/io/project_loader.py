@@ -218,6 +218,11 @@ def load_project(payload: dict[str, object]) -> ProjectConfig:
 		delta_Sw=_as_float(pert_raw.get("delta_Sw"), 0.0),
 		delta_Sg=_as_float(pert_raw.get("delta_Sg"), 0.0),
 	)
+	methods_raw = _as_dict(payload.get("methods", {}))
+	active_method = str(methods_raw.get("active_method", project.methods.active_method)).strip().lower()
+	if active_method not in {"newton_raphson", "quasi_newton"}:
+		active_method = project.methods.active_method
+	project.methods.active_method = active_method
 	project.is_dirty = _as_bool(payload.get("is_dirty"), False)
 	return project
 

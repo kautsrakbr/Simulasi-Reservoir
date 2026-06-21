@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from engine.domain.project import PerturbationConfig, ProjectConfig, WellConfig
+from engine.domain.project import MethodConfig, PerturbationConfig, ProjectConfig, WellConfig
 from engine.io.project_loader import load_project_json as io_load_project_json
 from engine.io.project_writer import write_project_json
 
@@ -189,6 +189,28 @@ def import_pvt_tables_from_file(project_config: ProjectConfig, file_path: str | 
 	return project_config
 
 
+def import_rock_tables_from_file(project_config: ProjectConfig, file_path: str | Path) -> ProjectConfig:
+	path = Path(file_path)
+	if not path.exists():
+		raise ValueError(f"File tidak ditemukan: {path}")
+
+	suffix = path.suffix.lower()
+	if suffix == ".csv":
+		rows = _read_rows_from_csv(path)
+	elif suffix in {".xlsx", ".xlsm", ".xltx", ".xltm", ".xls"}:
+		rows = _read_rows_from_excel(path)
+	else:
+		raise ValueError("Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls")
+
+	tables = _rows_to_rock_tables(rows)
+	if not tables:
+		raise ValueError("Tidak ada data rock-fluid valid yang bisa di-import.")
+
+	project_config.rock_tables = tables
+	project_config.is_dirty = True
+	return project_config
+
+
 def clear_pvt_tables(project_config: ProjectConfig) -> ProjectConfig:
 	project_config.pvt_tables.clear()
 	project_config.is_dirty = True
@@ -287,6 +309,26 @@ def _rows_to_pvt_tables(rows: list[dict[str, object]]) -> dict[str, list[tuple[f
 	)
 
 
+def _rows_to_rock_tables(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	if not rows:
+		return {}
+
+	cols = set(rows[0].keys())
+	long_mode = ({"table", "saturation", "value"} <= cols)
+	wide_keys = {"kro", "krw", "pcow", "krg", "pcgw"}
+	wide_mode = bool(wide_keys & cols) and bool({"saturation", "sw", "sg"} & cols)
+
+	if long_mode:
+		return _parse_long_rock_rows(rows)
+	if wide_mode:
+		return _parse_wide_rock_rows(rows)
+
+	raise ValueError(
+		"Format kolom rock-fluid tidak dikenali. Gunakan format long: table,saturation,value "
+		"atau format wide dengan kolom saturation/sw/sg dan salah satu dari kro,krw,pcow,krg,pcgw"
+	)
+
+
 def _parse_long_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
 	tables: dict[str, list[tuple[float, float]]] = {}
 	for i, row in enumerate(rows, start=2):
@@ -296,6 +338,21 @@ def _parse_long_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[floa
 		pressure = _to_float(row.get("pressure"), "pressure", i)
 		value = _to_float(row.get("value"), "value", i)
 		tables.setdefault(table_name, []).append((pressure, value))
+
+	for pairs in tables.values():
+		pairs.sort(key=lambda item: item[0])
+	return tables
+
+
+def _parse_long_rock_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	tables: dict[str, list[tuple[float, float]]] = {}
+	for i, row in enumerate(rows, start=2):
+		table_name = str(row.get("table", "")).strip().lower()
+		if not table_name:
+			raise ValueError(f"Kolom table kosong pada baris {i}.")
+		saturation = _to_float(row.get("saturation"), "saturation", i)
+		value = _to_float(row.get("value"), "value", i)
+		tables.setdefault(table_name, []).append((saturation, value))
 
 	for pairs in tables.values():
 		pairs.sort(key=lambda item: item[0])
@@ -314,6 +371,29 @@ def _parse_wide_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[floa
 				continue
 			value = _to_float(raw_val, table_name, i)
 			tables.setdefault(table_name, []).append((pressure, value))
+
+	for pairs in tables.values():
+		pairs.sort(key=lambda item: item[0])
+	return tables
+
+
+def _parse_wide_rock_rows(rows: list[dict[str, object]]) -> dict[str, list[tuple[float, float]]]:
+	tables: dict[str, list[tuple[float, float]]] = {}
+	ordered_tables = ["kro", "krw", "pcow", "krg", "pcgw"]
+
+	for i, row in enumerate(rows, start=2):
+		raw_saturation = row.get("saturation")
+		if raw_saturation is None or str(raw_saturation).strip() == "":
+			raw_saturation = row.get("sw")
+		if raw_saturation is None or str(raw_saturation).strip() == "":
+			raw_saturation = row.get("sg")
+		saturation = _to_float(raw_saturation, "saturation", i)
+		for table_name in ordered_tables:
+			raw_val = row.get(table_name)
+			if raw_val is None or str(raw_val).strip() == "":
+				continue
+			value = _to_float(raw_val, table_name, i)
+			tables.setdefault(table_name, []).append((saturation, value))
 
 	for pairs in tables.values():
 		pairs.sort(key=lambda item: item[0])
@@ -364,6 +444,12 @@ def update_perturbation_config(
 	project_config: ProjectConfig, pert: PerturbationConfig
 ) -> ProjectConfig:
 	project_config.perturbation = pert
+	project_config.is_dirty = True
+	return project_config
+
+
+def update_method_config(project_config: ProjectConfig, method_config: MethodConfig) -> ProjectConfig:
+	project_config.methods = method_config
 	project_config.is_dirty = True
 	return project_config
 

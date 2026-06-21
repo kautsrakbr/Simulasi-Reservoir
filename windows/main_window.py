@@ -29,12 +29,14 @@ from modules.project_service import (
 	clear_rock_tables,
 	create_empty_project,
 	import_pvt_tables_from_file,
+	import_rock_tables_from_file,
 	load_example_pvt_tables,
 	load_example_rock_tables,
 	load_project_json,
 	mark_project_clean,
 	save_project_json,
 	update_initial_conditions,
+	update_method_config,
 	update_grid_spec,
 	update_project_metadata,
 	update_solver_config,
@@ -47,6 +49,7 @@ from windows.dashboard_page import DashboardPage
 from windows.grid_page import GridPage
 from windows.initial_page import InitialPage
 from windows.model_page import ModelPage
+from windows.methods_page import MethodsPage
 from windows.pvt_page import PVTPage
 from windows.results_page import ResultsPage
 from windows.rock_page import RockPage
@@ -405,6 +408,7 @@ class MainWindow(QMainWindow):
 		self.connectivity_3d_page = Connectivity3DPage()
 		self.well_placement_page = WellPlacementPage()
 		self.jacobian_page = JacobianPage()
+		self.methods_page = MethodsPage()
 		self.input_constraints_page = _InputConstraintPage(
 			[
 				("Dashboard", self.dashboard_page),
@@ -440,6 +444,7 @@ class MainWindow(QMainWindow):
 		_config_tabs.addTab(self.connectivity_3d_page, "Connectivity 3D")
 		_config_tabs.addTab(self.well_placement_page, "Well Placement")
 		_config_tabs.addTab(self.jacobian_page, "Jacobian")
+		_config_tabs.addTab(self.methods_page, "Methods")
 		_config_container_layout.addWidget(_config_tabs)
 		self.configuration_page = _config_container
 
@@ -460,16 +465,10 @@ class MainWindow(QMainWindow):
 		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _sim_section)
 
 		# Sidebar navigation items
-		# Note: "Configuration" and "Constraints" labels are intentionally
-		# swapped from what the variable names suggest — btn_input still
-		# points at the Dashboard/Model/Solver page (now labeled
-		# "Configuration") and btn_configuration still points at the
-		# Connectivity 3D/Well Placement/Jacobian page (now labeled
-		# "Constraints"); only the displayed text swapped, not the wiring.
 		self.btn_input = _inputs_section.add_item("Configuration")
 		self.btn_setup = _inputs_section.add_item("Setup")
 		self.btn_properties = _inputs_section.add_item("Properties")
-		self.btn_configuration = _sim_section.add_item("Constraints")
+		self.btn_configuration = _inputs_section.add_item("Constraints")
 		self.btn_run = _sim_section.add_item("Simulation Run")
 		self.btn_results = _sim_section.add_item("Analytics & Results")
 
@@ -502,12 +501,14 @@ class MainWindow(QMainWindow):
 		self.pvt_page.importFileRequested.connect(self._import_pvt_file)
 		self.rock_page.loadExampleRequested.connect(self._load_example_rock)
 		self.rock_page.clearRequested.connect(self._clear_rock)
+		self.rock_page.importFileRequested.connect(self._import_rock_file)
 		self.initial_page.initialConditionsChanged.connect(self._handle_initial_conditions_changed)
 		self.run_page.runRequested.connect(self._start_run_simulation)
 		self.run_page.cancelRequested.connect(self._cancel_run_simulation)
 		self.results_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
 		self.well_placement_page.wellsChanged.connect(self._handle_wells_changed)
 		self.jacobian_page.perturbationChanged.connect(self._handle_perturbation_changed)
+		self.methods_page.methodSaved.connect(self._handle_method_saved)
 
 	def _handle_wells_changed(self, wells: list) -> None:
 		update_wells(self.project_config, wells)
@@ -515,6 +516,10 @@ class MainWindow(QMainWindow):
 
 	def _handle_perturbation_changed(self, pert) -> None:
 		update_perturbation_config(self.project_config, pert)
+		self._refresh_pages()
+
+	def _handle_method_saved(self, method_config) -> None:
+		update_method_config(self.project_config, method_config)
 		self._refresh_pages()
 
 	def _handle_project_changed(
@@ -633,7 +638,25 @@ class MainWindow(QMainWindow):
 
 	def _load_example_rock(self) -> None:
 		load_example_rock_tables(self.project_config)
+		self.rock_page.set_import_feedback("Contoh rock-fluid dimuat.")
 		self._refresh_pages()
+
+	def _import_rock_file(self, file_path: str) -> None:
+		try:
+			import_rock_tables_from_file(self.project_config, file_path)
+		except Exception as exc:
+			self.rock_page.set_import_feedback(f"Import gagal: {exc}", is_error=True)
+			QMessageBox.warning(self, "Import Rock-Fluid", f"Gagal import file rock-fluid:\n{exc}")
+			return
+
+		self.rock_page.set_import_feedback(
+			f"Import berhasil: {Path(file_path).name}",
+			is_error=False,
+		)
+		self._switch_to_page(1)
+		self.properties_page.switch_to_tab(1)
+		self._refresh_pages()
+		self.statusBar().showMessage(f"Rock-fluid ter-import: {Path(file_path).name}", 7000)
 
 	def _clear_rock(self) -> None:
 		clear_rock_tables(self.project_config)
@@ -708,6 +731,7 @@ class MainWindow(QMainWindow):
 		self.grid_page.set_project(self.project_config)
 		self.pvt_page.set_project(self.project_config)
 		self.rock_page.set_project(self.project_config)
+		self.methods_page.set_project(self.project_config)
 		self.initial_page.set_project(self.project_config)
 		self.run_page.set_project_state(self.project_config, validation_errors)
 		self.results_page.set_project(self.project_config)

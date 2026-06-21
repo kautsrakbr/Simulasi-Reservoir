@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
 	QAbstractSpinBox,
 	QDoubleSpinBox,
 	QFrame,
-	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QInputDialog,
 	QLabel,
@@ -21,7 +19,7 @@ from PySide6.QtWidgets import (
 
 
 def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> tuple[QFrame, QVBoxLayout]:
-	"""Build a white card (hairline border + soft drop shadow) with a circular
+	"""Build a white card (hairline border, no drop shadow) with a circular
 	icon badge + title/subtitle header.
 
 	Shared visual building block used across the Grid, Model, Solver and
@@ -36,12 +34,6 @@ def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> t
 			border-radius: 8px;
 		}
 	""")
-
-	shadow = QGraphicsDropShadowEffect(card)
-	shadow.setBlurRadius(20)
-	shadow.setOffset(0, 3)
-	shadow.setColor(QColor(15, 28, 43, 45))
-	card.setGraphicsEffect(shadow)
 
 	lay = QVBoxLayout(card)
 	lay.setContentsMargins(18, 16, 18, 16)
@@ -163,6 +155,29 @@ def enable_precise_edit(
 		lambda pos, s=spin, lbl=label: _show_field_menu(parent, s, lbl, s.mapToGlobal(pos))
 	)
 	spin.setProperty("flatValue", True)
+	spin.setStyleSheet("""
+		QAbstractSpinBox {
+			background: transparent;
+			border: 1px solid transparent;
+			border-radius: 8px;
+			padding: 6px 14px;
+			font-size: 10pt;
+			font-weight: 700;
+			color: #1F2937;
+		}
+		QAbstractSpinBox:hover,
+		QAbstractSpinBox:focus {
+			background: #F3F6FA;
+			border: 1px solid transparent;
+		}
+		QAbstractSpinBox::up-button,
+		QAbstractSpinBox::down-button {
+			width: 0px;
+			height: 0px;
+			border: none;
+			background: transparent;
+		}
+	""")
 	spin.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
 	spin.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 	spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -172,6 +187,18 @@ def enable_precise_edit(
 	# of relying on the event bubbling up to the spin box's own policy.
 	line_edit = spin.lineEdit()
 	if line_edit is not None:
+		line_edit.setProperty("flatValue", True)
+		line_edit.setStyleSheet("""
+			QLineEdit {
+				background: transparent;
+				border: none;
+				padding: 0;
+				margin: 0;
+				font-size: 10pt;
+				font-weight: 700;
+				color: #1F2937;
+			}
+		""")
 		line_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		line_edit.customContextMenuRequested.connect(
 			lambda pos, s=spin, le=line_edit, lbl=label: _show_field_menu(parent, s, lbl, le.mapToGlobal(pos))

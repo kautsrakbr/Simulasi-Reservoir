@@ -59,6 +59,11 @@ class PerturbationConfig:
 
 
 @dataclass(slots=True)
+class MethodConfig:
+	active_method: str = "newton_raphson"  # "newton_raphson" | "quasi_newton"
+
+
+@dataclass(slots=True)
 class WellConfig:
 	name: str = ""
 	well_type: str = "production"        # "production" | "injection"
@@ -80,4 +85,5 @@ class ProjectConfig:
 	rock_tables: dict[str, list[tuple[float, float]]] = field(default_factory=dict)
 	wells: list[WellConfig] = field(default_factory=list)
 	perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
+	methods: MethodConfig = field(default_factory=MethodConfig)
 	is_dirty: bool = False

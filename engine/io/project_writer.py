@@ -73,6 +73,9 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 			"delta_Sw":          project_config.perturbation.delta_Sw,
 			"delta_Sg":          project_config.perturbation.delta_Sg,
 		},
+		"methods": {
+			"active_method": project_config.methods.active_method,
+		},
 		"wells": [
 			{
 				"name": w.name,
