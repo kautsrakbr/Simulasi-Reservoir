@@ -55,7 +55,7 @@ class InitialPage(QWidget):
 
 		# ── Group: Reference & Initial Saturations ────────────────────
 		self._spin_input_blockers: list[SpinBoxInputBlocker] = []
-		card, lay = make_card("R", "#0891b2", "Referensi & Saturasi Awal", "Kondisi awal simulasi reservoir")
+		card, lay = make_card("R", "#0F5C8E", "Referensi & Saturasi Awal", "Kondisi awal simulasi reservoir")
 		frm = _form()
 		self.initial_pressure_input = QDoubleSpinBox()
 		self.initial_pressure_input.setRange(0.0, 1_000_000.0)

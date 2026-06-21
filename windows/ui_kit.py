@@ -21,24 +21,26 @@ from PySide6.QtWidgets import (
 
 
 def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> tuple[QFrame, QVBoxLayout]:
-	"""Build a shadowed white card with a circular icon badge + title/subtitle header.
+	"""Build a white card (hairline border + soft drop shadow) with a circular
+	icon badge + title/subtitle header.
 
-	Shared visual building block used across the Grid, Model and Initial
-	Conditions pages so section headers look consistent app-wide.
+	Shared visual building block used across the Grid, Model, Solver and
+	Initial Conditions pages so section headers look consistent app-wide.
 	"""
 	card = QFrame()
 	card.setObjectName("uiKitCard")
 	card.setStyleSheet("""
 		QFrame#uiKitCard {
 			background-color: #ffffff;
-			border: 1px solid #e2e8f0;
-			border-radius: 12px;
+			border: 1px solid #D7DEE7;
+			border-radius: 8px;
 		}
 	""")
+
 	shadow = QGraphicsDropShadowEffect(card)
-	shadow.setBlurRadius(18)
-	shadow.setColor(QColor(15, 23, 42, 22))
+	shadow.setBlurRadius(20)
 	shadow.setOffset(0, 3)
+	shadow.setColor(QColor(15, 28, 43, 45))
 	card.setGraphicsEffect(shadow)
 
 	lay = QVBoxLayout(card)
@@ -53,17 +55,17 @@ def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> t
 	icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 	icon_lbl.setStyleSheet(
 		f"background-color: {icon_color}; color: #ffffff; border-radius: 16px;"
-		"font-size: 11pt; font-weight: 800;"
+		"font-size: 11pt; font-weight: 700;"
 	)
 	header.addWidget(icon_lbl)
 
 	title_block = QVBoxLayout()
 	title_block.setSpacing(0)
 	title_lbl = QLabel(title)
-	title_lbl.setStyleSheet("font-size: 11pt; font-weight: 800; color: #0f172a;")
+	title_lbl.setStyleSheet("font-size: 11pt; font-weight: 700; color: #1F2937;")
 	title_block.addWidget(title_lbl)
 	sub_lbl = QLabel(subtitle)
-	sub_lbl.setStyleSheet("font-size: 8pt; color: #94a3b8;")
+	sub_lbl.setStyleSheet("font-size: 8pt; color: #93A1B2;")
 	title_block.addWidget(sub_lbl)
 	header.addLayout(title_block)
 	header.addStretch(1)
@@ -71,31 +73,31 @@ def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> t
 
 	sep = QFrame()
 	sep.setFrameShape(QFrame.Shape.HLine)
-	sep.setStyleSheet("background-color: #f1f5f9; border: none; max-height: 1px;")
+	sep.setStyleSheet("background-color: #EEF2F6; border: none; max-height: 1px;")
 	lay.addWidget(sep)
 
 	return card, lay
 
 
 def make_hero_banner(stat_tags: list[str]) -> tuple[QFrame, list[QLabel]]:
-	"""Build a teal-gradient hero banner with N stat blocks, returning their value labels."""
+	"""Build a flat summary strip with N stat blocks, returning their value labels.
+
+	Quiet by design: a tinted surface and a hairline border carry the "this is
+	a summary" signal, not a gradient fill — the accent color is reserved for
+	the values themselves.
+	"""
 	card = QFrame()
 	card.setObjectName("uiKitHero")
 	card.setStyleSheet("""
 		QFrame#uiKitHero {
-			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-				stop:0 #06b6d4, stop:1 #0e7490);
-			border-radius: 14px;
+			background-color: #F1F4F8;
+			border: 1px solid #D7DEE7;
+			border-radius: 8px;
 		}
 	""")
-	shadow = QGraphicsDropShadowEffect(card)
-	shadow.setBlurRadius(22)
-	shadow.setColor(QColor(8, 145, 178, 90))
-	shadow.setOffset(0, 5)
-	card.setGraphicsEffect(shadow)
 
 	lay = QHBoxLayout(card)
-	lay.setContentsMargins(22, 16, 22, 16)
+	lay.setContentsMargins(22, 14, 22, 14)
 	lay.setSpacing(26)
 
 	value_labels: list[QLabel] = []
@@ -103,20 +105,20 @@ def make_hero_banner(stat_tags: list[str]) -> tuple[QFrame, list[QLabel]]:
 		if i > 0:
 			divider = QFrame()
 			divider.setFrameShape(QFrame.Shape.VLine)
-			divider.setStyleSheet("background-color: rgba(255,255,255,70); max-width: 1px;")
+			divider.setStyleSheet("background-color: #D7DEE7; max-width: 1px;")
 			lay.addWidget(divider)
 
 		block = QVBoxLayout()
 		block.setSpacing(2)
 		tag_lbl = QLabel(tag)
 		tag_lbl.setStyleSheet(
-			"font-size: 7.5pt; font-weight: 800; color: #cffafe;"
+			"font-size: 7.5pt; font-weight: 700; color: #5B6676;"
 			"letter-spacing: 1.2px; background: transparent;"
 		)
 		block.addWidget(tag_lbl)
 		val_lbl = QLabel("-")
 		val_lbl.setStyleSheet(
-			"font-size: 14pt; font-weight: 900; color: #ffffff; background: transparent;"
+			"font-size: 14pt; font-weight: 700; color: #0F5C8E; background: transparent;"
 		)
 		block.addWidget(val_lbl)
 		value_labels.append(val_lbl)
@@ -191,7 +193,7 @@ def _show_field_menu(parent: QWidget, spin: QAbstractSpinBox, label: str, global
 	menu.setStyleSheet("""
 		QMenu {
 			background-color: #ffffff;
-			border: 1px solid #e2e8f0;
+			border: 1px solid #D7DEE7;
 			border-radius: 8px;
 			padding: 4px;
 			font-size: 9.5pt;
@@ -199,10 +201,10 @@ def _show_field_menu(parent: QWidget, spin: QAbstractSpinBox, label: str, global
 		QMenu::item {
 			padding: 9px 18px 9px 12px;
 			border-radius: 5px;
-			color: #0f172a;
+			color: #1F2937;
 			min-width: 160px;
 		}
-		QMenu::item:selected { background-color: #f1f5f9; }
+		QMenu::item:selected { background-color: #EEF2F6; }
 	""")
 	act_set_value = menu.addAction("  Set nilai presisi…")
 	action = menu.exec(global_pos)

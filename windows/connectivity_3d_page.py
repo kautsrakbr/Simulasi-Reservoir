@@ -49,9 +49,9 @@ class _Connectivity3DWidget(QWidget):
 
 	# Mode colors: (fill_rgb, border_rgb)
 	_COLORS: dict[str, tuple] = {
-		"normal":    ((248, 250, 252), (203, 213, 225)),
-		"connected": ((209, 250, 229), ( 16, 185, 129)),
-		"selected":  ((207, 250, 254), (  8, 145, 178)),
+		"normal":    ((247, 249, 251), (215, 222, 231)),
+		"connected": ((220, 238, 227), ( 45, 106,  79)),
+		"selected":  ((220, 234, 247), ( 15,  92, 142)),
 	}
 
 	def __init__(self, parent: QWidget | None = None) -> None:
@@ -320,13 +320,13 @@ class _Connectivity3DWidget(QWidget):
 	def paintEvent(self, event) -> None:
 		p = QPainter(self)
 		p.setRenderHint(QPainter.RenderHint.Antialiasing)
-		p.fillRect(self.rect(), QColor("#f1f5f9"))
+		p.fillRect(self.rect(), QColor("#EEF2F6"))
 
 		W, H = self.width(), self.height()
 
 		if self._nx == 0:
 			p.setFont(QFont("Segoe UI", 11))
-			p.setPen(QColor("#94a3b8"))
+			p.setPen(QColor("#93A1B2"))
 			p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
 					   "Tidak ada data spesifikasi grid")
 			p.end()
@@ -416,7 +416,7 @@ class _Connectivity3DWidget(QWidget):
 					base_rgb, _ = self._COLORS.get(mode, self._COLORS["normal"])
 					br = 0.299 * base_rgb[0] + 0.587 * base_rgb[1] + 0.114 * base_rgb[2]
 					rx, ry = x0 + ix * cs, y0 + iy * cs
-					p.setPen(QColor("#0f172a") if br > 150 else QColor("#ffffff"))
+					p.setPen(QColor("#1F2937") if br > 150 else QColor("#ffffff"))
 					p.drawText(QRectF(rx, ry, cs, cs), Qt.AlignmentFlag.AlignCenter, str(cell3d))
 
 		# Populate _top_face_centres for overlay use (sparse — non-normal + well cells only)
@@ -587,14 +587,14 @@ class _Connectivity3DWidget(QWidget):
 			p.setBrush(QBrush(QColor(*base_rgb)))
 			p.setPen(QPen(QColor(*bdr_rgb), 1.5))
 			p.drawRoundedRect(QRectF(x0, y0, 14, 14), 3, 3)
-			p.setPen(QColor("#475569"))
+			p.setPen(QColor("#5B6676"))
 			p.drawText(QRectF(x0 + 18, y0, 80, 14),
 					   Qt.AlignmentFlag.AlignVCenter, lbl)
 			y0 += 20
 
 	def _draw_hint(self, p: QPainter, W: int, H: int) -> None:
 		p.setFont(QFont("Segoe UI", 7))
-		p.setPen(QColor("#94a3b8"))
+		p.setPen(QColor("#93A1B2"))
 		if self._flat_mode:
 			hint = "Drag: geser  •  Scroll: zoom  •  Klik: pilih sel  •  Klik ganda: reset"
 		else:
@@ -621,7 +621,7 @@ class Connectivity3DPage(QWidget):
 		# ── Splitter Layout (Side-by-Side) ───────────────────────────────────
 		self.splitter = QSplitter(Qt.Orientation.Horizontal)
 		self.splitter.setObjectName("mainSplitter")
-		self.splitter.setStyleSheet("QSplitter::handle { background-color: #cbd5e1; height: 1px; width: 1px; }")
+		self.splitter.setStyleSheet("QSplitter::handle { background-color: #D7DEE7; height: 1px; width: 1px; }")
 
 		# Left Panel: 3D Visualization + Toolbar
 		left_panel = QWidget()
@@ -632,7 +632,7 @@ class Connectivity3DPage(QWidget):
 		# ── Toolbar Utama (Di dalam Left Panel) ─────────────────────────────────
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #cbd5e1;")
+		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #D7DEE7;")
 		tbar = QHBoxLayout(toolbar)
 		tbar.setContentsMargins(16, 8, 16, 8)
 		tbar.setSpacing(14)
@@ -640,7 +640,7 @@ class Connectivity3DPage(QWidget):
 		# Title
 		title_lbl = QLabel("Connection 3D")
 		title_lbl.setObjectName("pageTitle")
-		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #0891b2;")
+		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #0F5C8E;")
 		tbar.addWidget(title_lbl)
 
 		tbar.addStretch(1)
@@ -649,9 +649,9 @@ class Connectivity3DPage(QWidget):
 		self._conn_status = QLabel("Grid belum dikonfigurasi.")
 		self._conn_status.setObjectName("resultStatusLine")
 		self._conn_status.setStyleSheet("""
-			background-color: #ecfeff;
-			color: #0891b2;
-			border: 1px solid #bae6fd;
+			background-color: #DCEAF7;
+			color: #0F5C8E;
+			border: 1px solid #A9CCE5;
 			border-radius: 8px;
 			padding: 6px 14px;
 			font-size: 9pt;
@@ -667,24 +667,23 @@ class Connectivity3DPage(QWidget):
 		self.btn_focus.setStyleSheet("""
 			QPushButton {
 				background-color: #ffffff;
-				color: #475569;
-				border: 1.5px solid #e2e8f0;
+				color: #5B6676;
+				border: 1.5px solid #D7DEE7;
 				border-radius: 8px;
 				padding: 6px 14px;
 				font-size: 9pt;
 				font-weight: 700;
 			}
 			QPushButton:hover {
-				background-color: #ecfeff;
-				border-color: #67e8f9;
-				color: #0891b2;
+				background-color: #DCEAF7;
+				border-color: #A9CCE5;
+				color: #0F5C8E;
 			}
 			QPushButton:checked {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #22d3ee, stop:1 #0891b2);
-				border-color: #0891b2;
+				background-color: #0F5C8E;
+				border-color: #0F5C8E;
 				color: #ffffff;
-				font-weight: 800;
+				font-weight: 700;
 			}
 		""")
 		self.btn_focus.clicked.connect(self._on_focus_toggle)
@@ -696,17 +695,17 @@ class Connectivity3DPage(QWidget):
 		btn_reset.setStyleSheet("""
 			QPushButton {
 				background-color: #ffffff;
-				color: #475569;
-				border: 1.5px solid #e2e8f0;
+				color: #5B6676;
+				border: 1.5px solid #D7DEE7;
 				border-radius: 8px;
 				padding: 6px 14px;
 				font-size: 9pt;
 				font-weight: 700;
 			}
 			QPushButton:hover {
-				background-color: #ecfeff;
-				border-color: #67e8f9;
-				color: #0891b2;
+				background-color: #DCEAF7;
+				border-color: #A9CCE5;
+				color: #0F5C8E;
 			}
 		""")
 		btn_reset.clicked.connect(self._conn3d_reset_view)
@@ -719,17 +718,17 @@ class Connectivity3DPage(QWidget):
 		self.btn_toggle_table.setStyleSheet("""
 			QPushButton {
 				background-color: #ffffff;
-				color: #475569;
-				border: 1.5px solid #e2e8f0;
+				color: #5B6676;
+				border: 1.5px solid #D7DEE7;
 				border-radius: 8px;
 				font-size: 11pt;
 				font-weight: bold;
 				padding: 0px;
 			}
 			QPushButton:hover {
-				background-color: #ecfeff;
-				border-color: #67e8f9;
-				color: #0891b2;
+				background-color: #DCEAF7;
+				border-color: #A9CCE5;
+				color: #0F5C8E;
 			}
 		""")
 		self.btn_toggle_table.clicked.connect(self._toggle_table_panel)
@@ -751,7 +750,7 @@ class Connectivity3DPage(QWidget):
 
 		# Right Panel: Connection Details Card Panel
 		self.right_panel = QWidget()
-		self.right_panel.setStyleSheet("background-color: #f8fafc;")
+		self.right_panel.setStyleSheet("background-color: #F7F9FB;")
 		right_layout = QVBoxLayout(self.right_panel)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
@@ -759,14 +758,14 @@ class Connectivity3DPage(QWidget):
 		# Right Header (Symmetrical to Left Toolbar)
 		right_header = QWidget()
 		right_header.setObjectName("rightHeader")
-		right_header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #cbd5e1;")
+		right_header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #D7DEE7;")
 		right_hbar = QHBoxLayout(right_header)
 		right_hbar.setContentsMargins(16, 8, 16, 8)
 		right_hbar.setSpacing(10)
 
 		# Details Group Label
 		table_label = QLabel("Selected Cell Connections")
-		table_label.setStyleSheet("font-size: 11pt; font-weight: 800; color: #0f172a; letter-spacing: 0.5px;")
+		table_label.setStyleSheet("font-size: 11pt; font-weight: 700; color: #1F2937; letter-spacing: 0.5px;")
 		right_hbar.addWidget(table_label)
 		right_hbar.addStretch(1)
 
@@ -802,7 +801,7 @@ class Connectivity3DPage(QWidget):
 		bottom_controls.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
-				border-top: 1px solid #e2e8f0;
+				border-top: 1px solid #D7DEE7;
 				border-top-left-radius: 14px;
 				border-top-right-radius: 14px;
 			}
@@ -818,14 +817,14 @@ class Connectivity3DPage(QWidget):
 		bottom_layout.setSpacing(7)
 
 		model_label = QLabel("CONNECTIVITY MODEL")
-		model_label.setStyleSheet("font-size: 7.5pt; font-weight: 800; color: #94a3b8; letter-spacing: 1.2px;")
+		model_label.setStyleSheet("font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;")
 		bottom_layout.addWidget(model_label)
 
 		# Segmented buttons layout — rounded pill container (matches Well Placement style)
 		seg_widget = QWidget()
 		seg_widget.setObjectName("segContainer")
 		seg_widget.setStyleSheet(
-			"QWidget#segContainer { background-color: #eef2f6; border-radius: 10px; }"
+			"QWidget#segContainer { background-color: #F1F4F8; border-radius: 10px; }"
 		)
 		seg_layout = QHBoxLayout(seg_widget)
 		seg_layout.setContentsMargins(3, 3, 3, 3)
@@ -849,7 +848,7 @@ class Connectivity3DPage(QWidget):
 		large_btn_style = """
 		QPushButton {
 			background-color: transparent;
-			color: #64748b;
+			color: #5B6676;
 			border: 1px solid transparent;
 			border-radius: 8px;
 			padding: 9px 22px;
@@ -858,14 +857,14 @@ class Connectivity3DPage(QWidget):
 			min-height: 32px;
 		}
 		QPushButton:hover {
-			background-color: #e2e8f0;
-			color: #0f172a;
+			background-color: #D7DEE7;
+			color: #1F2937;
 		}
 		QPushButton:checked {
 			background-color: #ffffff;
-			color: #0f172a;
-			font-weight: 800;
-			border: 1px solid #dbe2ea;
+			color: #1F2937;
+			font-weight: 700;
+			border: 1px solid #D7DEE7;
 		}
 		"""
 		for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
@@ -878,7 +877,7 @@ class Connectivity3DPage(QWidget):
 		self.splitter.addWidget(self.right_panel)
 		
 		# Set initial sizes
-		self.splitter.setStyleSheet("QSplitter::handle { background-color: #cbd5e1; height: 1px; width: 1px; }")
+		self.splitter.setStyleSheet("QSplitter::handle { background-color: #D7DEE7; height: 1px; width: 1px; }")
 		self.splitter.setStretchFactor(0, 3)
 		self.splitter.setStretchFactor(1, 2)
 		self.splitter.setSizes([620, 380])
@@ -1088,7 +1087,7 @@ class Connectivity3DPage(QWidget):
 			ph_w.setStyleSheet("""
 				QWidget#placeholderCard {
 					background-color: #ffffff;
-					border: 2px dashed #cbd5e1;
+					border: 2px dashed #D7DEE7;
 					border-radius: 12px;
 				}
 			""")
@@ -1106,7 +1105,7 @@ class Connectivity3DPage(QWidget):
 			ph_title = QLabel("Koneksi Sel Grid")
 			ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 			ph_title.setStyleSheet(
-				"font-size: 11pt; font-weight: 800; color: #0891b2; background: transparent;"
+				"font-size: 11pt; font-weight: 700; color: #0F5C8E; background: transparent;"
 			)
 			ph_lay.addWidget(ph_title)
 
@@ -1115,7 +1114,7 @@ class Connectivity3DPage(QWidget):
 			)
 			ph_sub.setWordWrap(True)
 			ph_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_sub.setStyleSheet("font-size: 8.5pt; color: #64748b; background: transparent; line-height: 1.4;")
+			ph_sub.setStyleSheet("font-size: 8.5pt; color: #5B6676; background: transparent; line-height: 1.4;")
 			ph_lay.addWidget(ph_sub)
 
 			ph_outer_lay.addWidget(ph_w)
@@ -1135,7 +1134,7 @@ class Connectivity3DPage(QWidget):
 				if not cell_connections:
 					no_conn_lbl = QLabel(f"Tidak ada koneksi untuk Cell {self._selected_cell}.")
 					no_conn_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-					no_conn_lbl.setStyleSheet("color: #64748b; font-size: 10pt; font-style: italic; padding: 20px;")
+					no_conn_lbl.setStyleSheet("color: #5B6676; font-size: 10pt; font-style: italic; padding: 20px;")
 					self.scroll_layout.insertWidget(0, no_conn_lbl)
 					self._animate_card(no_conn_lbl, 0)
 				else:
@@ -1187,29 +1186,24 @@ class Connectivity3DPage(QWidget):
 		card = QFrame()
 		card.setObjectName("connectionCard")
 		card.setStyleSheet("""
-			QFrame#connectionCard { background-color: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; }
-			QFrame#connectionCard:hover { border-color: #0891b2; background-color: #f8fafc; }
+			QFrame#connectionCard { background-color: #ffffff; border: 1.5px solid #D7DEE7; border-radius: 8px; }
+			QFrame#connectionCard:hover { border-color: #0F5C8E; background-color: #F7F9FB; }
 		""")
-		shadow = QGraphicsDropShadowEffect(card)
-		shadow.setBlurRadius(10)
-		shadow.setColor(QColor(15, 23, 42, 18))
-		shadow.setOffset(0, 2)
-		card.setGraphicsEffect(shadow)
 
 		card_layout = QVBoxLayout(card)
 		card_layout.setContentsMargins(12, 12, 12, 12)
 		card_layout.setSpacing(10)
 
 		card_title = QLabel(f"Koneksi ke Cell {neighbor_id} ({n_i}, {n_j}, {n_k})")
-		card_title.setStyleSheet("font-size: 9.5pt; font-weight: 800; color: #0891b2;")
+		card_title.setStyleSheet("font-size: 9.5pt; font-weight: 700; color: #0F5C8E;")
 		card_layout.addWidget(card_title)
 
 		prop_grid = QWidget()
 		grid_lay = QGridLayout(prop_grid)
 		grid_lay.setContentsMargins(0, 0, 0, 0)
 		grid_lay.setSpacing(6)
-		k_style = "font-size: 8.5pt; font-weight: 700; color: #475569;"
-		v_style = "font-size: 9pt; font-weight: 800; color: #0f172a;"
+		k_style = "font-size: 8.5pt; font-weight: 700; color: #5B6676;"
+		v_style = "font-size: 9pt; font-weight: 700; color: #1F2937;"
 
 		for row, (lbl_k, lbl_v) in enumerate([
 			("Direction:", direction),

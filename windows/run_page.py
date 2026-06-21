@@ -3,7 +3,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
 	QFrame,
-	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QLabel,
 	QProgressBar,
@@ -76,12 +75,6 @@ class RunPage(QWidget):
 		for col in range(4):
 			self.table_summary.setItem(0, col, QTableWidgetItem("—"))
 
-		summary_shadow = QGraphicsDropShadowEffect(self.table_summary)
-		summary_shadow.setBlurRadius(16)
-		summary_shadow.setColor(QColor(15, 23, 42, 20))
-		summary_shadow.setOffset(0, 3)
-		self.table_summary.setGraphicsEffect(summary_shadow)
-
 		top_container = QWidget(self)
 		top_lay = QVBoxLayout(top_container)
 		top_lay.setContentsMargins(20, 16, 20, 0)
@@ -96,11 +89,7 @@ class RunPage(QWidget):
 		self._log.setObjectName("logOutput")
 		self._log.setReadOnly(True)
 		self._log.setPlaceholderText("Log simulasi akan muncul di sini saat run dimulai…")
-		log_shadow = QGraphicsDropShadowEffect(self._log)
-		log_shadow.setBlurRadius(18)
-		log_shadow.setColor(QColor(15, 23, 42, 30))
-		log_shadow.setOffset(0, 3)
-		self._log.setGraphicsEffect(log_shadow)
+		self._log.setMaximumHeight(280)
 
 		# ── Root Layout ──────────────────────────────────────────────────────
 		root = QVBoxLayout(self)
@@ -115,7 +104,8 @@ class RunPage(QWidget):
 		_lw = QVBoxLayout(_log_wrap)
 		_lw.setContentsMargins(20, 4, 20, 20)
 		_lw.addWidget(self._log)
-		root.addWidget(_log_wrap, 1)
+		root.addWidget(_log_wrap)
+		root.addStretch(1)
 
 		self._run_btn.clicked.connect(self.runRequested)
 		self._stop_btn.clicked.connect(self.cancelRequested)
@@ -134,20 +124,20 @@ class RunPage(QWidget):
 		# Set State Item
 		if project_config.is_dirty:
 			item_state = QTableWidgetItem("Belum Disimpan")
-			item_state.setForeground(QBrush(QColor("#b45309")))
+			item_state.setForeground(QBrush(QColor("#A86A15")))
 		else:
 			item_state = QTableWidgetItem("Up-to-date")
-			item_state.setForeground(QBrush(QColor("#059669")))
+			item_state.setForeground(QBrush(QColor("#2D6A4F")))
 		self.table_summary.setItem(0, 2, item_state)
 
 		# Set Validation Status Item
 		if validation_errors:
 			item_status = QTableWidgetItem("Blocked (Ada Hambatan)")
-			item_status.setForeground(QBrush(QColor("#dc2626")))
+			item_status.setForeground(QBrush(QColor("#B2413F")))
 			self._run_btn.setEnabled(False)
 		else:
 			item_status = QTableWidgetItem("Ready")
-			item_status.setForeground(QBrush(QColor("#059669")))
+			item_status.setForeground(QBrush(QColor("#2D6A4F")))
 			self._run_btn.setEnabled(True)
 		self.table_summary.setItem(0, 3, item_status)
 
@@ -167,6 +157,6 @@ class RunPage(QWidget):
 	def set_run_feedback(self, message: str) -> None:
 		# Update Validation Status column with feedback
 		item_feedback = QTableWidgetItem(message)
-		item_feedback.setForeground(QBrush(QColor("#0891b2")))
+		item_feedback.setForeground(QBrush(QColor("#0F5C8E")))
 		self.table_summary.setItem(0, 3, item_feedback)
 		self.append_log(message)

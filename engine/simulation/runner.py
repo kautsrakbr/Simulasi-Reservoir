@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Callable, TypedDict
+
+# Called once per Newton iteration (across every timestep/retry attempt) with
+# (time_days, iteration, residual_norm_vector, converged) so the UI can show
+# live progress instead of only the final per-step result.
+IterationCallback = Callable[[float, int, float, bool], None]
 
 from engine.domain.grid import GridModel
 from engine.domain.project import ProjectConfig
@@ -170,7 +175,10 @@ def _initialize_iteration_state(previous_state: ReservoirState) -> ReservoirStat
 	return ReservoirState(pressure=pressure, sw=list(previous_state.sw), sg=list(previous_state.sg))
 
 
-def run_simulation(project_config: ProjectConfig) -> RunResult:
+def run_simulation(
+	project_config: ProjectConfig,
+	on_iteration: IterationCallback | None = None,
+) -> RunResult:
 	grid_model = build_grid(project_config)
 	committed_state = initialize_state(project_config, grid_model)
 	update_grid_transmissibility(grid_model)
@@ -207,6 +215,7 @@ def run_simulation(project_config: ProjectConfig) -> RunResult:
 				trial_dt,
 				next_time_days,
 				mean_transmissibility,
+				on_iteration=on_iteration,
 			)
 			step_attempts.append(
 				StepAttempt(
@@ -260,6 +269,7 @@ def run_timestep(
 	dt_days: float,
 	time_days: float,
 	mean_transmissibility: float,
+	on_iteration: IterationCallback | None = None,
 ) -> tuple[TimeStepResult, ReservoirState, bool, float]:
 	working_state = _initialize_iteration_state(previous_state)
 	max_iterations = max(1, project_config.solver.max_newton_iterations)
@@ -284,8 +294,11 @@ def run_timestep(
 			dt_days,
 		)
 
-		if float(final_diagnostics["residual_norm_vector"]) <= residual_target:
-			converged = True
+		residual_norm_vector = float(final_diagnostics["residual_norm_vector"])
+		converged = residual_norm_vector <= residual_target
+		if on_iteration is not None:
+			on_iteration(time_days, iteration, residual_norm_vector, converged)
+		if converged:
 			break
 		# residual still above tolerance → keep iterating until max_newton_iterations
 

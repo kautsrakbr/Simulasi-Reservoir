@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QComboBox,
 	QFrame,
-	QGraphicsDropShadowEffect,
 	QGridLayout,
 	QHBoxLayout,
 	QHeaderView,
@@ -123,7 +122,7 @@ def get_color_from_colormap(val: float, vmin: float, vmax: float, cmap: str) -> 
 	b_blend = int(59 + blend_factor * (rgb[2] - 59))
 
 	bg = QColor(r_blend, g_blend, b_blend)
-	fg = QColor("#f8fafc") # Clean off-white text for dark theme contrast
+	fg = QColor("#F7F9FB") # Clean off-white text for dark theme contrast
 
 	return bg, fg
 
@@ -156,7 +155,7 @@ class _ColorbarWidget(QWidget):
 		# Draw label
 		font = QFont("Segoe UI", 8)
 		painter.setFont(font)
-		painter.setPen(QColor("#536c80"))
+		painter.setPen(QColor("#5B6676"))
 
 		title = f"Skala: {self.label}"
 		painter.drawText(QRectF(0, 0, w, 15), Qt.AlignmentFlag.AlignCenter, title)
@@ -176,14 +175,14 @@ class _ColorbarWidget(QWidget):
 			grad.setColorAt(frac, bg_color)
 
 		painter.setBrush(QBrush(grad))
-		painter.setPen(QPen(QColor("#cbdceb"), 1))
+		painter.setPen(QPen(QColor("#D7DEE7"), 1))
 		painter.drawRect(bar_margin, bar_y, bar_w, bar_h)
 
 		# Draw min/max text labels
 		min_txt = f"{self.vmin:.4e}" if abs(self.vmin) < 1e-2 or abs(self.vmin) >= 1e4 else f"{self.vmin:.4f}"
 		max_txt = f"{self.vmax:.4e}" if abs(self.vmax) < 1e-2 or abs(self.vmax) >= 1e4 else f"{self.vmax:.4f}"
 
-		painter.setPen(QColor("#334e68"))
+		painter.setPen(QColor("#1F2937"))
 		painter.drawText(QRectF(bar_margin, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignLeft, min_txt)
 		painter.drawText(QRectF(w - bar_margin - 100, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignRight, max_txt)
 
@@ -234,7 +233,7 @@ class _HeatmapCellWidget(QFrame):
 		self.setStyleSheet(f"""
 			QFrame#heatmapCell {{
 				background-color: {bg_hex};
-				border: 1.5px solid #334155;
+				border: 1.5px solid #1F2937;
 				border-radius: 8px;
 			}}
 		""")
@@ -286,15 +285,6 @@ def _repolish(widget: QWidget) -> None:
 	widget.style().polish(widget)
 
 
-def _add_shadow(widget: QWidget, blur: int = 18, alpha: int = 20, dy: int = 3) -> None:
-	"""Attach a soft drop shadow, matching the elevated-card look used elsewhere in the app."""
-	effect = QGraphicsDropShadowEffect(widget)
-	effect.setBlurRadius(blur)
-	effect.setColor(QColor(15, 23, 42, alpha))
-	effect.setOffset(0, dy)
-	widget.setGraphicsEffect(effect)
-
-
 def _icon_badge(letter: str, color: str, size: int = 20) -> QLabel:
 	"""Small circular colored badge with a letter, matching the icon-badge cards used elsewhere in the app."""
 	lbl = QLabel(letter)
@@ -317,11 +307,10 @@ def _title_row(title_label: QLabel, icon: str, color: str) -> QHBoxLayout:
 	return row
 
 
-def _make_card(title: str, icon: str | None = None, color: str = "#0891b2") -> tuple[QFrame, QLabel]:
+def _make_card(title: str, icon: str | None = None, color: str = "#0F5C8E") -> tuple[QFrame, QLabel]:
 	"""Return (card QFrame, title QLabel)."""
 	card = QFrame()
 	card.setObjectName("resultCard")
-	_add_shadow(card)
 	lay = QVBoxLayout(card)
 	lay.setContentsMargins(14, 10, 14, 12)
 	lay.setSpacing(6)
@@ -356,10 +345,9 @@ def _add_row(card: QFrame, label: str, value: str) -> QLabel:
 	return val_w
 
 
-def _make_stat_card(title: str, icon: str | None = None, color: str = "#0891b2") -> tuple[QFrame, QLabel]:
+def _make_stat_card(title: str, icon: str | None = None, color: str = "#0F5C8E") -> tuple[QFrame, QLabel]:
 	card = QFrame()
 	card.setObjectName("resultStatCard")
-	_add_shadow(card, blur=14, alpha=16, dy=2)
 	lay = QVBoxLayout(card)
 	lay.setContentsMargins(12, 10, 12, 10)
 	lay.setSpacing(4)
@@ -391,9 +379,9 @@ def _clear_layout(lay: QVBoxLayout) -> None:
 class _NormChartWidget(QWidget):
 	"""QPainter-based line chart: Norm vs Step."""
 
-	_COLOR_LINE  = QColor("#06b6d4")
-	_COLOR_OK    = QColor("#1e6d4e")
-	_COLOR_FAIL  = QColor("#b64842")
+	_COLOR_LINE  = QColor("#2E7DAE")
+	_COLOR_OK    = QColor("#2D6A4F")
+	_COLOR_FAIL  = QColor("#B2413F")
 	_COLOR_GRID  = QColor("#1a1c24")
 	_COLOR_AXIS  = QColor("#8a8f9e")
 	_COLOR_BG    = QColor("#0e0f14")
@@ -546,7 +534,7 @@ class _CorrectionChartWidget(QWidget):
 		if not self.dp:
 			font = QFont("Segoe UI", 9)
 			painter.setFont(font)
-			painter.setPen(QColor("#64748b"))
+			painter.setPen(QColor("#5B6676"))
 			painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Belum ada data koreksi")
 			painter.end()
 			return
@@ -562,9 +550,9 @@ class _CorrectionChartWidget(QWidget):
 		plot_w = w - margin_l - margin_r
 
 		colors = {
-			"dp": QColor("#ef4444"),  # Red
-			"dsw": QColor("#3b82f6"), # Blue
-			"dsg": QColor("#10b981"), # Green
+			"dp": QColor("#0F5C8E"),  # Pressure (petroleum-blue accent)
+			"dsw": QColor("#2563A6"), # Water saturation (info-blue)
+			"dsg": QColor("#0F766E"), # Gas saturation (gas-teal)
 		}
 
 		datasets = [
@@ -611,7 +599,7 @@ class _CorrectionChartWidget(QWidget):
 			# Draw labels
 			font = QFont("Segoe UI", 7)
 			painter.setFont(font)
-			painter.setPen(QColor("#94a3b8"))
+			painter.setPen(QColor("#93A1B2"))
 
 			# Title label
 			painter.drawText(QRectF(10, sy0, margin_l - 15, sh), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, title)
@@ -621,7 +609,7 @@ class _CorrectionChartWidget(QWidget):
 			painter.drawText(QRectF(margin_l + 4, sy1 - 12, 80, 12), Qt.AlignmentFlag.AlignLeft, f"-{limit:.2e}")
 
 		# Draw cell indices on bottom axis
-		painter.setPen(QColor("#64748b"))
+		painter.setPen(QColor("#5B6676"))
 		font = QFont("Segoe UI", 7)
 		painter.setFont(font)
 		for c_idx in range(n_cells):
@@ -968,7 +956,6 @@ class ResultsPage(QWidget):
 		# Controls row
 		toolbar = QWidget(w)
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		ctrl = QHBoxLayout(toolbar)
 		ctrl.setContentsMargins(12, 9, 12, 9)
 		ctrl.setSpacing(14)
@@ -1036,14 +1023,14 @@ class ResultsPage(QWidget):
 		right_lay.setContentsMargins(4, 0, 0, 0)
 		right_lay.setSpacing(10)
 
-		self._sel_card, self._sel_card_title = _make_card("Sel Dipilih: —", icon="S", color="#0891b2")
+		self._sel_card, self._sel_card_title = _make_card("Sel Dipilih: —", icon="S", color="#0F5C8E")
 		self._lbl_sel_p   = _add_row(self._sel_card, "Pressure", "—")
 		self._lbl_sel_sw  = _add_row(self._sel_card, "Sw", "—")
 		self._lbl_sel_sg  = _add_row(self._sel_card, "Sg", "—")
 		self._lbl_sel_res = _add_row(self._sel_card, "Residual", "—")
 		right_lay.addWidget(self._sel_card)
 
-		self._sym_card, _ = _make_card("Cek Simetri", icon="C", color="#10b981")
+		self._sym_card, _ = _make_card("Cek Simetri", icon="C", color="#2D6A4F")
 		self._sym_body = QVBoxLayout()
 		self._sym_body.setSpacing(5)
 		_h = QLabel("Pilih sel untuk melihat cek simetri.")
@@ -1073,7 +1060,6 @@ class ResultsPage(QWidget):
 		# ── Toolbar row ──────────────────────────────────────────────────────
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
@@ -1106,13 +1092,12 @@ class ResultsPage(QWidget):
 		chips_row.setSpacing(10)
 		self._resid_phase_lbls: dict[str, QLabel] = {}
 		for key, name, icon, color in (
-			("oil",   "Oil",   "O", "#b45309"),
-			("water", "Water", "W", "#2563eb"),
-			("gas",   "Gas",   "G", "#059669"),
+			("oil",   "Oil",   "O", "#B7791F"),
+			("water", "Water", "W", "#2563A6"),
+			("gas",   "Gas",   "G", "#0F766E"),
 		):
 			chip = QFrame()
 			chip.setObjectName("resultCard")
-			_add_shadow(chip, blur=10, alpha=12, dy=2)
 			chip_lay = QVBoxLayout(chip)
 			chip_lay.setContentsMargins(12, 8, 12, 9)
 			chip_lay.setSpacing(3)
@@ -1131,19 +1116,18 @@ class ResultsPage(QWidget):
 		# ── Unified residual table ────────────────────────────────────────────
 		card = QFrame()
 		card.setObjectName("resultCard")
-		_add_shadow(card)
 		card_lay = QVBoxLayout(card)
 		card_lay.setContentsMargins(12, 10, 12, 10)
 		card_lay.setSpacing(6)
 
 		card_title = QLabel("RESIDUAL PER SEL")
 		card_title.setObjectName("resultCardTitle")
-		title_row = _title_row(card_title, "R", "#0891b2")
+		title_row = _title_row(card_title, "R", "#0F5C8E")
 		title_row.addStretch(1)
 		legend = QLabel(
-			'<span style="color:#1d4ed8;">●</span> Positif&nbsp;&nbsp;'
-			'<span style="color:#b91c1c;">●</span> Negatif&nbsp;&nbsp;'
-			'<span style="color:#94a3b8;">●</span> ≈ 0'
+			'<span style="color:#2563A6;">●</span> Positif&nbsp;&nbsp;'
+			'<span style="color:#B2413F;">●</span> Negatif&nbsp;&nbsp;'
+			'<span style="color:#93A1B2;">●</span> ≈ 0'
 		)
 		legend.setObjectName("resultLegendLabel")
 		title_row.addWidget(legend)
@@ -1191,13 +1175,12 @@ class ResultsPage(QWidget):
 		# ── Table card ───────────────────────────────────────────────────
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
-		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 		tc_title = QLabel("RIWAYAT KONVERGENSI NEWTON")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addLayout(_title_row(tc_title, "K", "#2563eb"))
+		tc_lay.addLayout(_title_row(tc_title, "K", "#2563A6"))
 
 		self._conv_table = QTableWidget()
 		self._conv_table.setObjectName("resultConvTable")
@@ -1222,13 +1205,12 @@ class ResultsPage(QWidget):
 		# ── Chart card ───────────────────────────────────────────────────
 		chart_card = QFrame()
 		chart_card.setObjectName("resultCard")
-		_add_shadow(chart_card)
 		cc_lay = QVBoxLayout(chart_card)
 		cc_lay.setContentsMargins(12, 10, 12, 10)
 		cc_lay.setSpacing(6)
 		cc_title = QLabel("KONVERGENSI  NORM vs STEP")
 		cc_title.setObjectName("resultCardTitle")
-		cc_lay.addLayout(_title_row(cc_title, "N", "#7c3aed"))
+		cc_lay.addLayout(_title_row(cc_title, "N", "#08395A"))
 		self._conv_chart = _NormChartWidget()
 		cc_lay.addWidget(self._conv_chart, 1)
 		splitter.addWidget(chart_card)
@@ -1254,7 +1236,6 @@ class ResultsPage(QWidget):
 		# ── Toolbar ───────────────────────────────────────────────────
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(8)
@@ -1384,15 +1365,15 @@ class ResultsPage(QWidget):
 	def _get_jacobian_cell_color(self, val: float, max_abs: float) -> tuple[QColor, QColor]:
 		"""
 		Light-background diverging palette matching the header blue theme.
-		  Zero     → slate-50  (#f8fafc)  muted text
+		  Zero     → soft tint  (#DCEAF7)  muted text
 		  Positive → blue-100  → blue-500 → blue-900
 		  Negative → rose-100  → rose-500 → rose-900
-		  Text     → cyan (#0891b2) on light cells, white on dark cells
+		  Text     → petroleum-blue (#0F5C8E) on light cells, white on dark cells
 		"""
 		import math
 
 		if max_abs <= 0.0 or abs(val) < 1e-30:
-			return QColor("#f0f9ff"), QColor("#94a3b8")
+			return QColor("#DCEAF7"), QColor("#93A1B2")
 
 		t = math.sqrt(abs(val) / max_abs)
 
@@ -1415,7 +1396,7 @@ class ResultsPage(QWidget):
 
 		bg = QColor(r, g, b)
 		brightness = 0.299 * r + 0.587 * g + 0.114 * b
-		fg = QColor("#0891b2") if brightness > 180 else QColor("#f8fafc")
+		fg = QColor("#0F5C8E") if brightness > 180 else QColor("#F7F9FB")
 		return bg, fg
 
 	def _refresh_jacobian_tab(self) -> None:
@@ -1506,7 +1487,6 @@ class ResultsPage(QWidget):
 		# Toolbar row
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
@@ -1545,14 +1525,13 @@ class ResultsPage(QWidget):
 		# Left Card: Numerical values table
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
-		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 
 		tc_title = QLabel("NILAI KOREKSI PER CELL")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addLayout(_title_row(tc_title, "K", "#d97706"))
+		tc_lay.addLayout(_title_row(tc_title, "K", "#A86A15"))
 
 		self.corrections_table = QTableWidget()
 		self.corrections_table.setObjectName("resultCorrectionsTable")
@@ -1575,14 +1554,13 @@ class ResultsPage(QWidget):
 		# Right Card: Chart
 		chart_card = QFrame()
 		chart_card.setObjectName("resultCard")
-		_add_shadow(chart_card)
 		cc_lay = QVBoxLayout(chart_card)
 		cc_lay.setContentsMargins(12, 10, 12, 10)
 		cc_lay.setSpacing(6)
 
 		cc_title = QLabel("GRAFIK KOREKSI NEWTON")
 		cc_title.setObjectName("resultCardTitle")
-		cc_lay.addLayout(_title_row(cc_title, "G", "#e11d48"))
+		cc_lay.addLayout(_title_row(cc_title, "G", "#B2413F"))
 
 		self.corrections_chart = _CorrectionChartWidget()
 		cc_lay.addWidget(self.corrections_chart, 1)
@@ -1672,19 +1650,19 @@ class ResultsPage(QWidget):
 			item_dp = QTableWidgetItem(f"{v_dp:.6e}")
 			item_dp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			if abs(v_dp) > 1e-12:
-				item_dp.setForeground(QBrush(QColor("#f87171")))
+				item_dp.setForeground(QBrush(QColor("#0F5C8E")))
 			self.corrections_table.setItem(i, 1, item_dp)
 
 			item_dsw = QTableWidgetItem(f"{v_dsw:.6e}")
 			item_dsw.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			if abs(v_dsw) > 1e-12:
-				item_dsw.setForeground(QBrush(QColor("#60a5fa")))
+				item_dsw.setForeground(QBrush(QColor("#2563A6")))
 			self.corrections_table.setItem(i, 2, item_dsw)
 
 			item_dsg = QTableWidgetItem(f"{v_dsg:.6e}")
 			item_dsg.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			if abs(v_dsg) > 1e-12:
-				item_dsg.setForeground(QBrush(QColor("#34d399")))
+				item_dsg.setForeground(QBrush(QColor("#0F766E")))
 			self.corrections_table.setItem(i, 3, item_dsg)
 
 		self.corrections_chart.set_data(dp, dsw, dsg)
@@ -1741,12 +1719,12 @@ class ResultsPage(QWidget):
 		stats_grid.setHorizontalSpacing(10)
 		stats_grid.setVerticalSpacing(10)
 
-		card_steps, self._sum_steps = _make_stat_card("Steps", icon="#", color="#0891b2")
-		card_time, self._sum_time = _make_stat_card("Final Time", icon="T", color="#2563eb")
-		card_conv, self._sum_converged = _make_stat_card("Converged", icon="✓", color="#10b981")
-		card_maxr, self._sum_maxr = _make_stat_card("Max Residual", icon="R", color="#dc2626")
-		card_att, self._sum_attempts = _make_stat_card("Attempts", icon="A", color="#7c3aed")
-		card_rej, self._sum_rejected = _make_stat_card("Rejected", icon="X", color="#ef4444")
+		card_steps, self._sum_steps = _make_stat_card("Steps", icon="#", color="#0F5C8E")
+		card_time, self._sum_time = _make_stat_card("Final Time", icon="T", color="#2563A6")
+		card_conv, self._sum_converged = _make_stat_card("Converged", icon="✓", color="#2D6A4F")
+		card_maxr, self._sum_maxr = _make_stat_card("Max Residual", icon="R", color="#B2413F")
+		card_att, self._sum_attempts = _make_stat_card("Attempts", icon="A", color="#08395A")
+		card_rej, self._sum_rejected = _make_stat_card("Rejected", icon="X", color="#B2413F")
 
 		stats_grid.addWidget(card_steps, 0, 0)
 		stats_grid.addWidget(card_time, 0, 1)
@@ -1756,7 +1734,7 @@ class ResultsPage(QWidget):
 		stats_grid.addWidget(card_rej, 1, 2)
 		vlay.addLayout(stats_grid)
 
-		phase_card, _ = _make_card("Residual Per Fase", icon="R", color="#f59e0b")
+		phase_card, _ = _make_card("Residual Per Fase", icon="R", color="#A86A15")
 		self._sum_oil = _add_row(phase_card, "Oil", "-")
 		self._sum_water = _add_row(phase_card, "Water", "-")
 		self._sum_gas = _add_row(phase_card, "Gas", "-")
@@ -1785,7 +1763,6 @@ class ResultsPage(QWidget):
 
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
@@ -1812,7 +1789,6 @@ class ResultsPage(QWidget):
 		self.retry_table.setSortingEnabled(True)
 		self.retry_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 		self.retry_table.verticalHeader().setVisible(False)
-		_add_shadow(self.retry_table, blur=14, alpha=16, dy=2)
 		vlay.addWidget(self.retry_table)
 		return w
 
@@ -2010,12 +1986,12 @@ class ResultsPage(QWidget):
 			mag = abs(value) / max(scale, 1e-30)
 			t = min(math.sqrt(mag), 1.0)
 			if t < 1e-6:
-				return QColor("#f8fafc"), QColor("#94a3b8")
+				return QColor("#F1F4F8"), QColor("#93A1B2")
 			if value > 0:
 				bg = _blend((219, 234, 254), (29, 78, 216), t)   # blue-100 → blue-700
 			else:
 				bg = _blend((254, 226, 226), (185, 28, 28), t)   # red-100 → red-700
-			fg = QColor("#0f172a") if t < 0.55 else QColor("#ffffff")
+			fg = QColor("#1F2937") if t < 0.55 else QColor("#ffffff")
 			return bg, fg
 
 		mono_font = QFont("Consolas", 9)
@@ -2127,11 +2103,11 @@ class ResultsPage(QWidget):
 					step.summary.converged,
 				))
 
-		_COLOR_GREEN_BG = QColor("#d6f5e8")
-		_COLOR_RED_BG   = QColor("#fde8e6")
-		_COLOR_GREEN_FG = QColor("#1e6d4e")
-		_COLOR_RED_FG   = QColor("#b64842")
-		_COLOR_HEADER   = QColor("#536c80")
+		_COLOR_GREEN_BG = QColor("#DCEEE3")
+		_COLOR_RED_BG   = QColor("#F6DEDC")
+		_COLOR_GREEN_FG = QColor("#1F4D38")
+		_COLOR_RED_FG   = QColor("#7A2B29")
+		_COLOR_HEADER   = QColor("#5B6676")
 
 		self._conv_table.setRowCount(len(rows))
 		for r, (si, t, dt, iters, maxr, norm, ok) in enumerate(rows):
@@ -2203,11 +2179,11 @@ class ResultsPage(QWidget):
 				if ci == 6:
 					sv = str(value)
 					if sv == "accepted":
-						item.setBackground(QColor("#064e3b"))
+						item.setBackground(QColor("#1F4D38"))
 					elif sv == "abort-min-dt":
-						item.setBackground(QColor("#450a0a"))
+						item.setBackground(QColor("#7A2B29"))
 					else:
-						item.setBackground(QColor("#78350f"))
+						item.setBackground(QColor("#6B4710"))
 				self.retry_table.setItem(ri, ci, item)
 		self.retry_table.setSortingEnabled(True)
 		self.retry_table.sortByColumn(
@@ -2336,7 +2312,6 @@ class ResultsPage(QWidget):
 		# Toolbar
 		toolbar = QWidget()
 		toolbar.setObjectName("resultToolbar")
-		_add_shadow(toolbar, blur=12, alpha=15, dy=2)
 		tbar_lay = QHBoxLayout(toolbar)
 		tbar_lay.setContentsMargins(12, 8, 12, 8)
 		tbar_lay.setSpacing(10)
@@ -2404,14 +2379,13 @@ class ResultsPage(QWidget):
 		# Left Card: Data Table
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
-		_add_shadow(table_card)
 		tc_lay = QVBoxLayout(table_card)
 		tc_lay.setContentsMargins(12, 10, 12, 10)
 		tc_lay.setSpacing(6)
 
 		tc_title = QLabel("TABEL SEMUA PROPERTI PER CELL")
 		tc_title.setObjectName("resultCardTitle")
-		tc_lay.addLayout(_title_row(tc_title, "P", "#0891b2"))
+		tc_lay.addLayout(_title_row(tc_title, "P", "#0F5C8E"))
 
 		self.prop_table = QTableWidget()
 		self.prop_table.setObjectName("resultPropTable")
@@ -2438,14 +2412,13 @@ class ResultsPage(QWidget):
 		# Right Card: Heatmap Grid
 		map_card = QFrame()
 		map_card.setObjectName("resultCard")
-		_add_shadow(map_card)
 		mc_lay = QVBoxLayout(map_card)
 		mc_lay.setContentsMargins(12, 10, 12, 10)
 		mc_lay.setSpacing(6)
 
 		self.map_title = QLabel("PETA GRID HEATMAP: p (psia)")
 		self.map_title.setObjectName("resultCardTitle")
-		mc_lay.addLayout(_title_row(self.map_title, "M", "#059669"))
+		mc_lay.addLayout(_title_row(self.map_title, "M", "#2D6A4F"))
 
 		self.prop_grid_scroll = QScrollArea()
 		self.prop_grid_scroll.setObjectName("resultGridScroll")
@@ -2598,7 +2571,7 @@ class ResultsPage(QWidget):
 
 				item = QTableWidgetItem(fmt.format(val))
 				item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-				item.setForeground(QBrush(QColor("#cbd5e1")))
+				item.setForeground(QBrush(QColor("#5B6676")))
 				self.prop_table.setItem(r, col_idx, item)
 
 		# 2. Populate Heatmap Grid

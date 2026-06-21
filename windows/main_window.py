@@ -51,6 +51,7 @@ from windows.pvt_page import PVTPage
 from windows.results_page import ResultsPage
 from windows.rock_page import RockPage
 from windows.run_page import RunPage
+from windows.solver_page import SolverPage
 from windows.connectivity_3d_page import Connectivity3DPage
 from windows.jacobian_page import JacobianPage
 from windows.well_placement_page import WellPlacementPage
@@ -394,6 +395,7 @@ class MainWindow(QMainWindow):
 	def _add_pages(self) -> None:
 		self.dashboard_page = DashboardPage()
 		self.model_page = ModelPage()
+		self.solver_page = SolverPage()
 		self.grid_page = GridPage()
 		self.pvt_page = PVTPage()
 		self.rock_page = RockPage()
@@ -407,6 +409,12 @@ class MainWindow(QMainWindow):
 			[
 				("Dashboard", self.dashboard_page),
 				("Model", self.model_page),
+				("Solver", self.solver_page),
+			],
+			self,
+		)
+		self.setup_page = _InputConstraintPage(
+			[
 				("Grid", self.grid_page),
 				("Initial", self.initial_page),
 			],
@@ -425,20 +433,10 @@ class MainWindow(QMainWindow):
 		_config_container_layout.setContentsMargins(0, 0, 0, 0)
 		_config_container_layout.setSpacing(0)
 		_config_tabs = QTabWidget()
-		_config_tabs.setObjectName("configTabs")
-		_config_tabs.setStyleSheet("""
-			QTabWidget::pane { border: none; }
-			QTabBar::tab {
-				background-color: #f1f5f9; color: #64748b; border: none;
-				border-bottom: 2px solid transparent;
-				padding: 8px 22px; font-size: 9.5pt; font-weight: 600; min-width: 130px;
-			}
-			QTabBar::tab:selected {
-				color: #0891b2; border-bottom: 2px solid #0891b2;
-				background-color: #ffffff;
-			}
-			QTabBar::tab:hover:!selected { color: #0f172a; background-color: #e2e8f0; }
-		""")
+		_config_tabs.setObjectName("inputTabs")
+		_config_tabs.tabBar().setObjectName("inputTabBar")
+		_config_tabs.tabBar().setExpanding(False)
+		_config_tabs.setDocumentMode(True)
 		_config_tabs.addTab(self.connectivity_3d_page, "Connectivity 3D")
 		_config_tabs.addTab(self.well_placement_page, "Well Placement")
 		_config_tabs.addTab(self.jacobian_page, "Jacobian")
@@ -451,6 +449,7 @@ class MainWindow(QMainWindow):
 		self._page_stack.addWidget(self.configuration_page)      # index 2
 		self._page_stack.addWidget(self.run_page)                # index 3
 		self._page_stack.addWidget(self.results_page)            # index 4
+		self._page_stack.addWidget(self.setup_page)               # index 5
 
 		# Group 1: Inputs
 		_inputs_section = _NavSection("Inputs", self._nav_inner)
@@ -461,9 +460,16 @@ class MainWindow(QMainWindow):
 		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _sim_section)
 
 		# Sidebar navigation items
-		self.btn_input = _inputs_section.add_item("Constraints")
+		# Note: "Configuration" and "Constraints" labels are intentionally
+		# swapped from what the variable names suggest — btn_input still
+		# points at the Dashboard/Model/Solver page (now labeled
+		# "Configuration") and btn_configuration still points at the
+		# Connectivity 3D/Well Placement/Jacobian page (now labeled
+		# "Constraints"); only the displayed text swapped, not the wiring.
+		self.btn_input = _inputs_section.add_item("Configuration")
+		self.btn_setup = _inputs_section.add_item("Setup")
 		self.btn_properties = _inputs_section.add_item("Properties")
-		self.btn_configuration = _sim_section.add_item("Configuration")
+		self.btn_configuration = _sim_section.add_item("Constraints")
 		self.btn_run = _sim_section.add_item("Simulation Run")
 		self.btn_results = _sim_section.add_item("Analytics & Results")
 
@@ -473,12 +479,14 @@ class MainWindow(QMainWindow):
 		self.btn_configuration.clicked.connect(lambda _=None: self._switch_to_page(2))
 		self.btn_run.clicked.connect(lambda _=None: self._switch_to_page(3))
 		self.btn_results.clicked.connect(lambda _=None: self._switch_to_page(4))
+		self.btn_setup.clicked.connect(lambda _=None: self._switch_to_page(5))
 		self._nav_buttons.extend([
 			self.btn_input,
 			self.btn_properties,
 			self.btn_configuration,
 			self.btn_run,
 			self.btn_results,
+			self.btn_setup,
 		])
 
 		# Mark first nav btn active
@@ -487,7 +495,7 @@ class MainWindow(QMainWindow):
 
 	def _connect_signals(self) -> None:
 		self.model_page.projectChanged.connect(self._handle_project_changed)
-		self.model_page.solverChanged.connect(self._handle_solver_changed)
+		self.solver_page.solverChanged.connect(self._handle_solver_changed)
 		self.grid_page.gridChanged.connect(self._handle_grid_changed)
 		self.pvt_page.loadExampleRequested.connect(self._load_example_pvt)
 		self.pvt_page.clearRequested.connect(self._clear_pvt)
@@ -666,9 +674,19 @@ class MainWindow(QMainWindow):
 		self.run_result = run_result
 		step_count = len(run_result.steps)
 		warning_count = len(run_result.warnings)
+		converged_count = sum(1 for step in run_result.steps if step.summary.converged)
+		total_iterations = sum(step.summary.newton_iterations for step in run_result.steps)
+		overall_max_residual = max(
+			(step.summary.max_residual for step in run_result.steps), default=0.0
+		)
 		msg = f"Selesai — {step_count} step(s), {warning_count} warning(s)"
 		self.run_page.set_running(False)
-		self.run_page.append_log(f"=== {msg} ===")
+		self.run_page.append_log(
+			f"=== {msg} ===\n"
+			f"    Step konvergen        : {converged_count}/{step_count}\n"
+			f"    Total iterasi Newton  : {total_iterations}\n"
+			f"    Max residual (semua)  : {overall_max_residual:.3e}"
+		)
 		self.run_page.set_run_feedback(msg)
 		mark_project_clean(self.project_config)
 		self._refresh_pages()
@@ -686,6 +704,7 @@ class MainWindow(QMainWindow):
 		validation_errors = validate_project(self.project_config)
 		self.dashboard_page.set_project_overview(self.project_config, validation_errors)
 		self.model_page.set_project(self.project_config)
+		self.solver_page.set_project(self.project_config)
 		self.grid_page.set_project(self.project_config)
 		self.pvt_page.set_project(self.project_config)
 		self.rock_page.set_project(self.project_config)

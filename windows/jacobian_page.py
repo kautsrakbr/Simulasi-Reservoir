@@ -27,9 +27,9 @@ from windows.connectivity_3d_page import _Connectivity3DWidget
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 _VAR_META = {
-	"P":  ("∂P",  "#7c3aed", "Pressure"),
-	"Sw": ("∂Sw", "#0891b2", "Water Saturation"),
-	"Sg": ("∂Sg", "#d97706", "Gas Saturation"),
+	"P":  ("∂P",  "#0F5C8E", "Pressure"),
+	"Sw": ("∂Sw", "#2563A6", "Water Saturation"),
+	"Sg": ("∂Sg", "#0F766E", "Gas Saturation"),
 }
 
 _DIR_ARROW = {
@@ -39,12 +39,12 @@ _DIR_ARROW = {
 
 _SEG_BASE = """
 QPushButton {
-	background-color: #f8fafc; color: #475569;
-	border: 1.5px solid #cbd5e1; padding: 8px 14px;
+	background-color: #F7F9FB; color: #5B6676;
+	border: 1.5px solid #D7DEE7; padding: 8px 14px;
 	font-size: 9pt; font-weight: 700; min-height: 34px;
 }
-QPushButton:hover  { background-color: #f1f5f9; color: #0f172a; border-color: #94a3b8; }
-QPushButton:checked { background-color: #7c3aed; color: #ffffff; border-color: #7c3aed; }
+QPushButton:hover  { background-color: #EEF2F6; color: #1F2937; border-color: #B8C3D1; }
+QPushButton:checked { background-color: #0F5C8E; color: #ffffff; border-color: #0F5C8E; }
 """
 
 
@@ -54,10 +54,10 @@ class _Jacobian3DWidget(_Connectivity3DWidget):
 	"""Connectivity viewer repurposed for Jacobian cell selection."""
 
 	_COLORS: dict[str, tuple] = {
-		"normal":    ((248, 250, 252), (203, 213, 225)),
-		"connected": ((209, 250, 229), ( 16, 185, 129)),
-		"well":      ((254, 235, 200), (234,  88,  12)),
-		"perturbed": ((237, 233, 254), (109,  40, 217)),
+		"normal":    ((247, 249, 251), (215, 222, 231)),
+		"connected": ((220, 238, 227), ( 45, 106,  79)),
+		"well":      ((243, 228, 199), (183, 121,  31)),
+		"perturbed": ((220, 234, 247), ( 15,  92, 142)),
 	}
 
 	def __init__(self, parent=None) -> None:
@@ -78,7 +78,7 @@ class _Jacobian3DWidget(_Connectivity3DWidget):
 			p.setBrush(QBrush(QColor(*base_rgb)))
 			p.setPen(QPen(QColor(*bdr_rgb), 1.5))
 			p.drawRoundedRect(QRectF(x0, y0, 14, 14), 3, 3)
-			p.setPen(QColor("#475569"))
+			p.setPen(QColor("#5B6676"))
 			p.drawText(QRectF(x0 + 18, y0, 80, 14),
 					   Qt.AlignmentFlag.AlignVCenter, lbl)
 			y0 += 20
@@ -109,15 +109,15 @@ class _Jacobian3DWidget(_Connectivity3DWidget):
 			if centre is None:
 				continue
 			if well_type == "production":
-				dark_col  = QColor("#92400e")
-				main_col  = QColor("#c2410c")
-				light_col = QColor("#f97316")
-				glow_col  = QColor(251, 146, 60, 80)
+				dark_col  = QColor("#6B4710")
+				main_col  = QColor("#B7791F")
+				light_col = QColor("#D9A14A")
+				glow_col  = QColor(217, 161, 74, 80)
 			else:
-				dark_col  = QColor("#1e3a8a")
-				main_col  = QColor("#1d4ed8")
-				light_col = QColor("#3b82f6")
-				glow_col  = QColor(59, 130, 246, 80)
+				dark_col  = QColor("#1B4566")
+				main_col  = QColor("#2563A6")
+				light_col = QColor("#5B8FC4")
+				glow_col  = QColor(91, 143, 196, 80)
 
 			x, y   = centre.x(), centre.y()
 			top_y  = y - pole_h
@@ -233,7 +233,7 @@ class JacobianPage(QWidget):
 		# ── Splitter ────────────────────────────────────────────────────────
 		self.splitter = QSplitter(Qt.Orientation.Horizontal)
 		self.splitter.setStyleSheet(
-			"QSplitter::handle { background-color: #cbd5e1; width: 1px; }"
+			"QSplitter::handle { background-color: #D7DEE7; width: 1px; }"
 		)
 
 		# ── Left panel ──────────────────────────────────────────────────────
@@ -243,20 +243,20 @@ class JacobianPage(QWidget):
 		left_layout.setSpacing(0)
 
 		toolbar = QWidget()
-		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #cbd5e1;")
+		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #D7DEE7;")
 		tbar = QHBoxLayout(toolbar)
 		tbar.setContentsMargins(16, 8, 16, 8)
 		tbar.setSpacing(14)
 
 		title_lbl = QLabel("Jacobian Inspector")
-		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #7c3aed;")
+		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #0F5C8E;")
 		tbar.addWidget(title_lbl)
 		tbar.addStretch(1)
 
 		self._jac_status = QLabel("Grid belum dikonfigurasi.")
 		self._jac_status.setStyleSheet("""
-			background-color: #faf5ff; color: #7c3aed;
-			border: 1px solid #e9d5ff; border-radius: 8px;
+			background-color: #DCEAF7; color: #0F5C8E;
+			border: 1px solid #A9CCE5; border-radius: 8px;
 			padding: 6px 14px; font-size: 9pt; font-weight: 600;
 		""")
 		self._jac_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -270,24 +270,23 @@ class JacobianPage(QWidget):
 		self.btn_focus.setStyleSheet("""
 			QPushButton {
 				background-color: #ffffff;
-				color: #475569;
-				border: 1.5px solid #e2e8f0;
+				color: #5B6676;
+				border: 1.5px solid #D7DEE7;
 				border-radius: 8px;
 				padding: 6px 14px;
 				font-size: 9pt;
 				font-weight: 700;
 			}
 			QPushButton:hover {
-				background-color: #f5f3ff;
-				border-color: #c4b5fd;
-				color: #7c3aed;
+				background-color: #DCEAF7;
+				border-color: #A9CCE5;
+				color: #0F5C8E;
 			}
 			QPushButton:checked {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #8b5cf6, stop:1 #7c3aed);
-				border-color: #7c3aed;
+				background-color: #0F5C8E;
+				border-color: #0F5C8E;
 				color: #ffffff;
-				font-weight: 800;
+				font-weight: 700;
 			}
 		""")
 		self.btn_focus.clicked.connect(self._on_focus_toggle)
@@ -296,9 +295,9 @@ class JacobianPage(QWidget):
 		btn_reset = QPushButton("↺  Reset View")
 		btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
 		btn_reset.setStyleSheet("""
-			QPushButton { background-color:#ffffff; color:#475569; border:1.5px solid #e2e8f0;
+			QPushButton { background-color:#ffffff; color:#5B6676; border:1.5px solid #D7DEE7;
 				border-radius:8px; padding:6px 14px; font-size:9pt; font-weight:700; }
-			QPushButton:hover { background-color:#f5f3ff; border-color:#c4b5fd; color:#7c3aed; }
+			QPushButton:hover { background-color:#DCEAF7; border-color:#A9CCE5; color:#0F5C8E; }
 		""")
 		btn_reset.clicked.connect(lambda: self._jac3d.reset_view())
 		tbar.addWidget(btn_reset)
@@ -308,9 +307,9 @@ class JacobianPage(QWidget):
 		self.btn_toggle.setToolTip("Hide Details")
 		self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
 		self.btn_toggle.setStyleSheet("""
-			QPushButton { background-color:#ffffff; color:#475569; border:1.5px solid #e2e8f0;
+			QPushButton { background-color:#ffffff; color:#5B6676; border:1.5px solid #D7DEE7;
 				border-radius:8px; font-size:11pt; font-weight:bold; padding:0px; }
-			QPushButton:hover { background-color:#f5f3ff; border-color:#c4b5fd; color:#7c3aed; }
+			QPushButton:hover { background-color:#DCEAF7; border-color:#A9CCE5; color:#0F5C8E; }
 		""")
 		self.btn_toggle.clicked.connect(self._toggle_panel)
 		tbar.addWidget(self.btn_toggle)
@@ -330,7 +329,7 @@ class JacobianPage(QWidget):
 		# ── Right panel ─────────────────────────────────────────────────────
 		self.right_panel = QWidget()
 		self.right_panel.setObjectName("rightPanel")
-		self.right_panel.setStyleSheet("QWidget#rightPanel { background-color: #f8fafc; }")
+		self.right_panel.setStyleSheet("QWidget#rightPanel { background-color: #F7F9FB; }")
 		right_layout = QVBoxLayout(self.right_panel)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
@@ -338,13 +337,13 @@ class JacobianPage(QWidget):
 		right_header = QWidget()
 		right_header.setObjectName("rightHeader")
 		right_header.setStyleSheet(
-			"QWidget#rightHeader { background-color: #ffffff; border-bottom: 1px solid #cbd5e1; }"
+			"QWidget#rightHeader { background-color: #ffffff; border-bottom: 1px solid #D7DEE7; }"
 		)
 		rh = QHBoxLayout(right_header)
 		rh.setContentsMargins(16, 8, 16, 8)
 		hdr_lbl = QLabel("Jacobian Non-Zero Entries")
 		hdr_lbl.setStyleSheet(
-			"font-size: 11pt; font-weight: 800; color: #0f172a; letter-spacing: 0.5px;"
+			"font-size: 11pt; font-weight: 700; color: #1F2937; letter-spacing: 0.5px;"
 		)
 		rh.addWidget(hdr_lbl)
 		rh.addStretch(1)
@@ -355,9 +354,8 @@ class JacobianPage(QWidget):
 		self._cell_info_banner.setObjectName("cellInfoBanner")
 		self._cell_info_banner.setStyleSheet("""
 			QWidget#cellInfoBanner {
-				background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-					stop:0 #7c3aed, stop:1 #6d28d9);
-				border-bottom: 2px solid #5b21b6;
+				background-color: #0F5C8E;
+				border-bottom: 2px solid #0C4A73;
 			}
 		""")
 		ci_outer = QHBoxLayout(self._cell_info_banner)
@@ -372,12 +370,12 @@ class JacobianPage(QWidget):
 		ci_num_lay.setSpacing(0)
 		self._ci_tag = QLabel("PERTURB CELL")
 		self._ci_tag.setStyleSheet(
-			"font-size: 6pt; font-weight: 800; color: #c4b5fd; letter-spacing: 1.8px; background: transparent;"
+			"font-size: 6pt; font-weight: 700; color: #A9CCE5; letter-spacing: 1.8px; background: transparent;"
 		)
 		ci_num_lay.addWidget(self._ci_tag)
 		self._ci_cell_num = QLabel("Cell -")
 		self._ci_cell_num.setStyleSheet(
-			"font-size: 17pt; font-weight: 900; color: #ffffff; background: transparent;"
+			"font-size: 17pt; font-weight: 700; color: #ffffff; background: transparent;"
 		)
 		ci_num_lay.addWidget(self._ci_cell_num)
 		ci_outer.addWidget(ci_num_block)
@@ -385,7 +383,7 @@ class JacobianPage(QWidget):
 		# Divider
 		ci_div = QFrame()
 		ci_div.setFrameShape(QFrame.Shape.VLine)
-		ci_div.setStyleSheet("background: #7c3aed; border: none; max-width: 1px; margin: 4px 16px;")
+		ci_div.setStyleSheet("background: rgba(255,255,255,70); border: none; max-width: 1px; margin: 4px 16px;")
 		ci_outer.addWidget(ci_div)
 
 		# Right: info grid
@@ -397,19 +395,19 @@ class JacobianPage(QWidget):
 
 		self._ci_coords = QLabel("-")
 		self._ci_coords.setStyleSheet(
-			"font-size: 8.5pt; color: #ddd6fe; font-weight: 700; background: transparent;"
+			"font-size: 8.5pt; color: #D7E8F5; font-weight: 700; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_coords)
 
 		self._ci_conn_lbl = QLabel("-")
 		self._ci_conn_lbl.setStyleSheet(
-			"font-size: 8pt; color: #c4b5fd; background: transparent;"
+			"font-size: 8pt; color: #A9CCE5; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_conn_lbl)
 
 		self._ci_well_lbl = QLabel("")
 		self._ci_well_lbl.setStyleSheet(
-			"font-size: 8pt; color: #fde68a; font-weight: 700; background: transparent;"
+			"font-size: 8pt; color: #F2C572; font-weight: 700; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_well_lbl)
 		ci_outer.addWidget(ci_info, 1)
@@ -444,7 +442,7 @@ class JacobianPage(QWidget):
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
-				border-top: 1px solid #e2e8f0;
+				border-top: 1px solid #D7DEE7;
 				border-top-left-radius: 14px;
 				border-top-right-radius: 14px;
 			}
@@ -462,7 +460,7 @@ class JacobianPage(QWidget):
 		# Section header
 		eps_sec_lbl = QLabel("PERTURBATION (ε)")
 		eps_sec_lbl.setStyleSheet(
-			"font-size: 7.5pt; font-weight: 800; color: #64748b; letter-spacing: 1.2px;"
+			"font-size: 7.5pt; font-weight: 700; color: #5B6676; letter-spacing: 1.2px;"
 		)
 		bot_layout.addWidget(eps_sec_lbl)
 
@@ -472,20 +470,20 @@ class JacobianPage(QWidget):
 			"Ketiga variabel (P, Sw, Sg) diperturb serentak pada sel yang sama."
 		)
 		hint_lbl.setWordWrap(True)
-		hint_lbl.setStyleSheet("font-size: 7.5pt; color: #94a3b8; font-style: italic;")
+		hint_lbl.setStyleSheet("font-size: 7.5pt; color: #93A1B2; font-style: italic;")
 		bot_layout.addWidget(hint_lbl)
 
 		# Separator
 		_sep = QFrame()
 		_sep.setFrameShape(QFrame.Shape.HLine)
-		_sep.setStyleSheet("background-color: #e2e8f0; border: none; max-height: 1px; margin: 2px 0;")
+		_sep.setStyleSheet("background-color: #D7DEE7; border: none; max-height: 1px; margin: 2px 0;")
 		bot_layout.addWidget(_sep)
 
 		# Variable rows styled customly for each variable
 		_VAR_DEFS = [
-			("P",  "Pressure", "#7c3aed", "#f5f3ff", "#c4b5fd", "#ede9fe"),
-			("Sw", "Water",    "#0891b2", "#ecfeff", "#a5f3fc", "#cffafe"),
-			("Sg", "Gas",      "#d97706", "#fffbeb", "#fde68a", "#fef3c7"),
+			("P",  "Pressure", "#0F5C8E", "#DCEAF7", "#A9CCE5", "#CFE3F4"),
+			("Sw", "Water",    "#2563A6", "#DCE8F2", "#A8C2DA", "#CFE0EC"),
+			("Sg", "Gas",      "#0F766E", "#D9EDE9", "#A0CFC7", "#CCE6E1"),
 		]
 		for _vk, _vname, _vcol, _vbg, _vborder, _vhover in _VAR_DEFS:
 			_row_w = QWidget()
@@ -505,7 +503,7 @@ class JacobianPage(QWidget):
 
 			_name_lbl = QLabel(_vname + ":")
 			_name_lbl.setFixedWidth(66)
-			_name_lbl.setStyleSheet("font-size: 8.5pt; color: #374151; font-weight: 600;")
+			_name_lbl.setStyleSheet("font-size: 8.5pt; color: #1F2937; font-weight: 600;")
 			_row_lay.addWidget(_name_lbl)
 
 			_spn = QDoubleSpinBox()
@@ -521,7 +519,7 @@ class JacobianPage(QWidget):
 					padding: 3px 5px;
 					font-size: 8.5pt;
 					background: #ffffff;
-					color: #1e1b4b;
+					color: #1F2937;
 				}}
 				QDoubleSpinBox:focus {{
 					border-color: {_vcol};
@@ -587,7 +585,7 @@ class JacobianPage(QWidget):
 			self._row_toggles[_vk] = (_btn_pct, _btn_abs)
 
 			_auto_lbl = QLabel("Auto: 1.00%")
-			_auto_lbl.setStyleSheet("font-size: 7.5pt; color: #94a3b8; font-style: italic;")
+			_auto_lbl.setStyleSheet("font-size: 7.5pt; color: #93A1B2; font-style: italic;")
 			_row_lay.addWidget(_auto_lbl)
 
 			_btn_rst = QPushButton("Auto")
@@ -621,8 +619,8 @@ class JacobianPage(QWidget):
 		self._preview_card.setObjectName("previewCard")
 		self._preview_card.setStyleSheet("""
 			QWidget#previewCard {
-				background-color: #f8fafc;
-				border: 1.5px solid #cbd5e1;
+				background-color: #F7F9FB;
+				border: 1.5px solid #D7DEE7;
 				border-radius: 8px;
 			}
 		""")
@@ -631,26 +629,20 @@ class JacobianPage(QWidget):
 		preview_lay.setSpacing(4)
 
 		preview_title = QLabel("DELTA YANG TERSIMPAN (UNTUK SIMULASI):")
-		preview_title.setStyleSheet("font-size: 7.5pt; font-weight: 800; color: #64748b; letter-spacing: 0.8px;")
+		preview_title.setStyleSheet("font-size: 7.5pt; font-weight: 700; color: #5B6676; letter-spacing: 0.8px;")
 		preview_lay.addWidget(preview_title)
 
 		self._preview_P = QLabel("-")
-		self._preview_P.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #7c3aed; font-weight: bold;")
+		self._preview_P.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #0F5C8E; font-weight: bold;")
 		preview_lay.addWidget(self._preview_P)
 
 		self._preview_Sw = QLabel("-")
-		self._preview_Sw.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #0891b2; font-weight: bold;")
+		self._preview_Sw.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #2563A6; font-weight: bold;")
 		preview_lay.addWidget(self._preview_Sw)
 
 		self._preview_Sg = QLabel("-")
-		self._preview_Sg.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #d97706; font-weight: bold;")
+		self._preview_Sg.setStyleSheet("font-size: 8.5pt; font-family: monospace; color: #0F766E; font-weight: bold;")
 		preview_lay.addWidget(self._preview_Sg)
-
-		preview_shadow = QGraphicsDropShadowEffect(self._preview_card)
-		preview_shadow.setBlurRadius(12)
-		preview_shadow.setColor(QColor(15, 23, 42, 18))
-		preview_shadow.setOffset(0, 2)
-		self._preview_card.setGraphicsEffect(preview_shadow)
 
 		bot_layout.addWidget(self._preview_card)
 
@@ -658,24 +650,17 @@ class JacobianPage(QWidget):
 		_save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 		_save_btn.setStyleSheet("""
 			QPushButton {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #8b5cf6, stop:1 #7c3aed);
+				background-color: #0F5C8E;
 				color: #ffffff; border: none;
 				border-radius: 9px; padding: 10px 20px;
-				font-size: 9.5pt; font-weight: 800; min-height: 38px; margin-top: 6px;
+				font-size: 9.5pt; font-weight: 700; min-height: 38px; margin-top: 6px;
 				letter-spacing: 0.3px;
 			}
 			QPushButton:hover {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #7c3aed, stop:1 #6d28d9);
+				background-color: #2E7DAE;
 			}
-			QPushButton:pressed { background-color: #5b21b6; }
+			QPushButton:pressed { background-color: #0C4A73; }
 		""")
-		save_shadow = QGraphicsDropShadowEffect(_save_btn)
-		save_shadow.setBlurRadius(18)
-		save_shadow.setColor(QColor(124, 58, 237, 110))
-		save_shadow.setOffset(0, 4)
-		_save_btn.setGraphicsEffect(save_shadow)
 		_save_btn.clicked.connect(self._on_save)
 		bot_layout.addWidget(_save_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -968,8 +953,8 @@ class JacobianPage(QWidget):
 		# Status bar
 		if self._perturbed_cell:
 			self._jac_status.setStyleSheet("""
-				background-color: #faf5ff; color: #7c3aed;
-				border: 1px solid #e9d5ff; border-radius: 8px;
+				background-color: #DCEAF7; color: #0F5C8E;
+				border: 1px solid #A9CCE5; border-radius: 8px;
 				padding: 6px 14px; font-size: 9pt; font-weight: 600;
 			""")
 			n_entries = 1 + len(connected_set)
@@ -1008,7 +993,7 @@ class JacobianPage(QWidget):
 			ph_w.setStyleSheet("""
 				QWidget#placeholderCard {
 					background-color: #ffffff;
-					border: 2px dashed #cbd5e1;
+					border: 2px dashed #D7DEE7;
 					border-radius: 12px;
 				}
 			""")
@@ -1026,7 +1011,7 @@ class JacobianPage(QWidget):
 			ph_title = QLabel("Pilih Sel Perturbasi")
 			ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 			ph_title.setStyleSheet(
-				"font-size: 11pt; font-weight: 800; color: #7c3aed; background: transparent;"
+				"font-size: 11pt; font-weight: 700; color: #0F5C8E; background: transparent;"
 			)
 			ph_lay.addWidget(ph_title)
 
@@ -1037,7 +1022,7 @@ class JacobianPage(QWidget):
 			)
 			ph_sub.setWordWrap(True)
 			ph_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_sub.setStyleSheet("font-size: 8.5pt; color: #64748b; background: transparent; line-height: 1.4;")
+			ph_sub.setStyleSheet("font-size: 8.5pt; color: #5B6676; background: transparent; line-height: 1.4;")
 			ph_lay.addWidget(ph_sub)
 
 			ph_outer_lay.addWidget(ph_w)
@@ -1180,12 +1165,7 @@ class JacobianPage(QWidget):
 				border-radius: 8px;
 			}}
 		""")
-		shadow = QGraphicsDropShadowEffect(card)
-		shadow.setBlurRadius(8)
-		shadow.setColor(QColor(15, 23, 42, 15))
-		shadow.setOffset(0, 2)
-		card.setGraphicsEffect(shadow)
-		
+
 		lay = QVBoxLayout(card)
 		lay.setContentsMargins(12, 10, 12, 10)
 		lay.setSpacing(6)
@@ -1202,7 +1182,7 @@ class JacobianPage(QWidget):
 		return lbl
 
 	def _card_self(self, entry: dict, var_sym: str, var_color: str, var_name: str) -> QWidget:
-		card, lay = self._make_card("#a78bfa")  # light purple border
+		card, lay = self._make_card("#A9CCE5")  # light accent border
 
 		cell_id = entry["cell_id"]
 		ix, iy  = entry["coords"]
@@ -1212,15 +1192,15 @@ class JacobianPage(QWidget):
 		title_row = QHBoxLayout()
 		title_row.setSpacing(8)
 		title_lbl = QLabel(f"Cell {cell_id} ({ix}, {iy})  —  Diagonal")
-		title_lbl.setStyleSheet("font-size: 9.5pt; font-weight: 800; color: #6d28d9;")
+		title_lbl.setStyleSheet("font-size: 9.5pt; font-weight: 700; color: #0C4A73;")
 		title_row.addWidget(title_lbl)
 		title_row.addStretch(1)
-		title_row.addWidget(self._badge("SELF", "#ede9fe", "#7c3aed", "#a78bfa"))
+		title_row.addWidget(self._badge("SELF", "#DCEAF7", "#0F5C8E", "#A9CCE5"))
 		lay.addLayout(title_row)
 
 		# Equation hint
 		eq_lbl = QLabel(f"∂F_{cell_id} / {var_sym}_{cell_id}  ·  Accumulation term")
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #64748b; font-family: monospace;")
+		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
 		lay.addWidget(eq_lbl)
 
 		# Variable sensitivity note
@@ -1230,24 +1210,24 @@ class JacobianPage(QWidget):
 			"Sg": "Gas + oil saturation functions   (∂krg/∂Sg, ∂kro/∂Sg)",
 		}[entry["var"]]
 		note_lbl = QLabel(var_note)
-		note_lbl.setStyleSheet("font-size: 8pt; color: #7c3aed;")
+		note_lbl.setStyleSheet("font-size: 8pt; color: #0F5C8E;")
 		note_lbl.setWordWrap(True)
 		lay.addWidget(note_lbl)
 
 		if well:
 			sep = QFrame()
 			sep.setFrameShape(QFrame.Shape.HLine)
-			sep.setStyleSheet("background-color: #ede9fe; border: none; max-height: 1px;")
+			sep.setStyleSheet("background-color: #DCEAF7; border: none; max-height: 1px;")
 			lay.addWidget(sep)
 			wtype  = "Production" if well.well_type == "production" else "Injection"
 			w_lbl  = QLabel(f"+ Well Term: {well.name}  [{wtype}]  —  modifies diagonal")
-			w_lbl.setStyleSheet("font-size: 8pt; color: #7c3aed; font-weight: 600;")
+			w_lbl.setStyleSheet("font-size: 8pt; color: #0F5C8E; font-weight: 600;")
 			lay.addWidget(w_lbl)
 
 		return card
 
 	def _card_connection(self, entry: dict, var_sym: str, var_color: str) -> QWidget:
-		card, lay = self._make_card("#6ee7b7")  # green border
+		card, lay = self._make_card("#2D6A4F")  # success border
 
 		cell_id = entry["cell_id"]
 		ix, iy  = entry["coords"]
@@ -1262,10 +1242,10 @@ class JacobianPage(QWidget):
 		title_row = QHBoxLayout()
 		title_row.setSpacing(8)
 		title_lbl = QLabel(f"{arrow}  Cell {cell_id} ({ix}, {iy})  —  Off-Diagonal")
-		title_lbl.setStyleSheet("font-size: 9.5pt; font-weight: 800; color: #065f46;")
+		title_lbl.setStyleSheet("font-size: 9.5pt; font-weight: 700; color: #1F4D38;")
 		title_row.addWidget(title_lbl)
 		title_row.addStretch(1)
-		title_row.addWidget(self._badge(direc, "#d1fae5", "#065f46", "#6ee7b7"))
+		title_row.addWidget(self._badge(direc, "#DCEEE3", "#1F4D38", "#2D6A4F"))
 		lay.addLayout(title_row)
 
 		# Equation hint
@@ -1273,7 +1253,7 @@ class JacobianPage(QWidget):
 			f"∂F_pert / {var_sym}_{cell_id}  ·  Inter-cell flux  "
 			f"(Darcy)"
 		)
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #64748b; font-family: monospace;")
+		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
 		lay.addWidget(eq_lbl)
 
 		# Transmissibility row
@@ -1282,7 +1262,7 @@ class JacobianPage(QWidget):
 
 		def _kv(k: str, v: str) -> QLabel:
 			lbl = QLabel(f"<b>{k}</b>  {v}")
-			lbl.setStyleSheet("font-size: 8pt; color: #374151;")
+			lbl.setStyleSheet("font-size: 8pt; color: #1F2937;")
 			return lbl
 
 		prop_row.addWidget(_kv("T =", f"{trans:,.4f}"))
@@ -1298,7 +1278,7 @@ class JacobianPage(QWidget):
 			"Sg": "Gas relative perm  — ∂(krg·T·ΔP)/∂Sg",
 		}[entry["var"]]
 		flux_lbl = QLabel(var_flux)
-		flux_lbl.setStyleSheet("font-size: 8pt; color: #059669; font-style: italic;")
+		flux_lbl.setStyleSheet("font-size: 8pt; color: #2D6A4F; font-style: italic;")
 		lay.addWidget(flux_lbl)
 
 		# If neighbor cell has a well: annotate
@@ -1308,14 +1288,14 @@ class JacobianPage(QWidget):
 				f"({'Prod' if well.well_type == 'production' else 'Inj'}) — "
 				f"potential cross-coupling via pressure drawdown"
 			)
-			w_note.setStyleSheet("font-size: 7.5pt; color: #ea580c; font-weight: 600;")
+			w_note.setStyleSheet("font-size: 7.5pt; color: #A86A15; font-weight: 600;")
 			w_note.setWordWrap(True)
 			lay.addWidget(w_note)
 
 		return card
 
 	def _card_well_term(self, entry: dict, var_sym: str, var_color: str) -> QWidget:
-		card, lay = self._make_card("#fcd34d")  # amber border
+		card, lay = self._make_card("#A86A15")  # warning border
 
 		well    = entry["well"]
 		cell_id = entry["cell_id"]
@@ -1325,11 +1305,11 @@ class JacobianPage(QWidget):
 		title_row.setSpacing(8)
 		icon  = "⚡" if is_prod else "💧"
 		title = QLabel(f"{icon}  Well: {well.name}  —  Source/Sink Term")
-		title.setStyleSheet("font-size: 9.5pt; font-weight: 800; color: #92400e;")
+		title.setStyleSheet("font-size: 9.5pt; font-weight: 700; color: #6B4710;")
 		title_row.addWidget(title)
 		title_row.addStretch(1)
 		wtype_badge = "PROD" if is_prod else "INJ"
-		title_row.addWidget(self._badge(wtype_badge, "#fffbeb", "#92400e", "#fcd34d"))
+		title_row.addWidget(self._badge(wtype_badge, "#F7E9D2", "#6B4710", "#A86A15"))
 		lay.addLayout(title_row)
 
 		# Equation
@@ -1337,7 +1317,7 @@ class JacobianPage(QWidget):
 			f"∂Q_{cell_id} / {var_sym}_{cell_id}  ·  Well control equation"
 		)
 		eq_lbl = QLabel(eq)
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #64748b; font-family: monospace;")
+		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
 		lay.addWidget(eq_lbl)
 
 		# Well properties
@@ -1352,7 +1332,7 @@ class JacobianPage(QWidget):
 
 		def _kv(k: str, v: str) -> QLabel:
 			lbl = QLabel(f"<b>{k}</b>  {v}")
-			lbl.setStyleSheet("font-size: 8pt; color: #374151;")
+			lbl.setStyleSheet("font-size: 8pt; color: #1F2937;")
 			return lbl
 
 		prop_row.addWidget(_kv("Model:", model_display))
@@ -1367,7 +1347,7 @@ class JacobianPage(QWidget):
 			"Sg": "∂(λg·PI·ΔP)/∂Sg  —  changes gas mobility",
 		}[entry["var"]]
 		wvar_lbl = QLabel(var_well)
-		wvar_lbl.setStyleSheet("font-size: 8pt; color: #d97706; font-style: italic;")
+		wvar_lbl.setStyleSheet("font-size: 8pt; color: #A86A15; font-style: italic;")
 		wvar_lbl.setWordWrap(True)
 		lay.addWidget(wvar_lbl)
 

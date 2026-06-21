@@ -66,11 +66,11 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 	escape_pressed     = Signal()
 
 	_COLORS: dict[str, tuple] = {
-		"normal":     ((248, 250, 252), (203, 213, 225)),
-		"production": ((254, 235, 200), (234,  88,  12)),
-		"injection":  ((219, 234, 254), ( 37,  99, 235)),
-		"selected":   ((207, 250, 254), (  8, 145, 178)),
-		"moving":     ((254, 243, 199), (245, 158,  11)),
+		"normal":     ((247, 249, 251), (215, 222, 231)),
+		"production": ((243, 228, 199), (183, 121,  31)),
+		"injection":  ((220, 232, 242), ( 37,  99, 166)),
+		"selected":   ((220, 234, 247), ( 15,  92, 142)),
+		"moving":     ((247, 233, 210), (168, 106,  21)),
 	}
 
 	def __init__(self, parent=None) -> None:
@@ -179,8 +179,8 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 		target_c2d = (self._drag_target - 1) % plane + 1
 		is_valid   = (target_c2d != self._dragging_well
 					  and target_c2d not in self._well_info)
-		fill_color  = QColor(8, 145, 178, 70)  if is_valid else QColor(239, 68, 68, 70)
-		border_color = QColor("#0891b2")        if is_valid else QColor("#ef4444")
+		fill_color  = QColor(15, 92, 142, 70)  if is_valid else QColor(178, 65, 63, 70)
+		border_color = QColor("#0F5C8E")        if is_valid else QColor("#B2413F")
 		label        = "✓"                      if is_valid else "✗"
 
 		if self._flat_mode:
@@ -221,11 +221,11 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 		lbl_font = QFont("Segoe UI Variable Text", lbl_sz); lbl_font.setBold(True)
 
 		if well_type == "production":
-			dark_col  = QColor("#92400e"); main_col = QColor("#c2410c")
-			light_col = QColor("#f97316"); glow_col = QColor(251, 146, 60, 90)
+			dark_col  = QColor("#6B4710"); main_col = QColor("#B7791F")
+			light_col = QColor("#D9A14A"); glow_col = QColor(217, 161, 74, 90)
 		else:
-			dark_col  = QColor("#1e3a8a"); main_col = QColor("#1d4ed8")
-			light_col = QColor("#3b82f6"); glow_col = QColor(59, 130, 246, 90)
+			dark_col  = QColor("#1B4566"); main_col = QColor("#2563A6")
+			light_col = QColor("#5B8FC4"); glow_col = QColor(91, 143, 196, 90)
 
 		if is_sel:
 			main_col = main_col.lighter(135); light_col = light_col.lighter(120)
@@ -340,11 +340,11 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 		from PySide6.QtGui import QFont, QColor
 		if self._move_mode_active:
 			p.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
-			p.setPen(QColor("#b45309"))
+			p.setPen(QColor("#A86A15"))
 			hint = "MODE PINDAH  •  Klik sel tujuan untuk memindahkan  •  Esc: batal"
 		else:
 			p.setFont(QFont("Segoe UI", 7))
-			p.setPen(QColor("#94a3b8"))
+			p.setPen(QColor("#93A1B2"))
 			if self._flat_mode:
 				hint = "Klik: tambah/pilih  •  2x klik sumur: pindah  •  Drag: geser  •  Scroll: zoom"
 			else:
@@ -371,15 +371,15 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 			p.setBrush(QBrush(QColor(*base_rgb)))
 			p.setPen(QPen(QColor(*bdr_rgb), 1.5))
 			p.drawRoundedRect(QRectF(x0, y0, 14, 14), 3, 3)
-			p.setPen(QColor("#475569"))
+			p.setPen(QColor("#5B6676"))
 			p.drawText(QRectF(x0 + 18, y0, 90, 14),
 					   Qt.AlignmentFlag.AlignVCenter, lbl)
 			y0 += 20
 		if self._show_top_layer:
-			p.setBrush(QBrush(QColor(254, 243, 199)))
-			p.setPen(QPen(QColor(251, 191, 36), 1.5))
+			p.setBrush(QBrush(QColor(247, 233, 210)))
+			p.setPen(QPen(QColor(168, 106, 21), 1.5))
 			p.drawRoundedRect(QRectF(x0, y0, 14, 14), 3, 3)
-			p.setPen(QColor("#475569"))
+			p.setPen(QColor("#5B6676"))
 			p.drawText(QRectF(x0 + 18, y0, 90, 14),
 					   Qt.AlignmentFlag.AlignVCenter, "Top Layer")
 			y0 += 20
@@ -387,7 +387,7 @@ class _WellPlacement3DWidget(_Connectivity3DWidget):
 
 _SEG_CONTAINER_QSS = """
 QWidget#segContainer {
-	background-color: #eef2f6;
+	background-color: #F1F4F8;
 	border-radius: 10px;
 }
 """
@@ -395,7 +395,7 @@ QWidget#segContainer {
 _SEG_BASE = """
 QPushButton {
 	background-color: transparent;
-	color: #64748b;
+	color: #5B6676;
 	border: 1px solid transparent;
 	border-radius: 8px;
 	padding: 7px 12px;
@@ -403,12 +403,12 @@ QPushButton {
 	font-weight: 600;
 	min-height: 30px;
 }
-QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }
+QPushButton:hover { background-color: #D7DEE7; color: #1F2937; }
 QPushButton:checked {
 	background-color: #ffffff;
-	color: #0f172a;
+	color: #1F2937;
 	font-weight: 700;
-	border: 1px solid #dbe2ea;
+	border: 1px solid #D7DEE7;
 }
 QPushButton:checked:hover { background-color: #ffffff; }
 """
@@ -434,7 +434,7 @@ class WellPlacementPage(QWidget):
 		self.splitter = QSplitter(Qt.Orientation.Horizontal)
 		self.splitter.setObjectName("wellSplitter")
 		self.splitter.setStyleSheet(
-			"QSplitter::handle { background-color: #cbd5e1; height: 1px; width: 1px; }"
+			"QSplitter::handle { background-color: #D7DEE7; height: 1px; width: 1px; }"
 		)
 
 		# ── Left panel ─────────────────────────────────────────────────────────
@@ -444,29 +444,29 @@ class WellPlacementPage(QWidget):
 		left_layout.setSpacing(0)
 
 		toolbar = QWidget()
-		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #cbd5e1;")
+		toolbar.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #D7DEE7;")
 		tbar = QHBoxLayout(toolbar)
 		tbar.setContentsMargins(16, 8, 16, 8)
 		tbar.setSpacing(14)
 
 		title_lbl = QLabel("Well Placement")
-		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #0891b2;")
+		title_lbl.setStyleSheet("font-size: 13pt; font-weight: bold; color: #0F5C8E;")
 		tbar.addWidget(title_lbl)
 		tbar.addStretch(1)
 
 		self._well_status = QLabel("Grid belum dikonfigurasi.")
 		self._well_status.setStyleSheet("""
-			background-color: #ecfeff; color: #0891b2;
-			border: 1px solid #bae6fd; border-radius: 8px;
+			background-color: #DCEAF7; color: #0F5C8E;
+			border: 1px solid #A9CCE5; border-radius: 8px;
 			padding: 6px 14px; font-size: 9pt; font-weight: 600;
 		""")
 		tbar.addWidget(self._well_status)
 
 		btn_reset = QPushButton("  ↺  Reset View")
 		btn_reset.setStyleSheet("""
-			QPushButton { background-color:#ffffff; color:#475569; border:1px solid #cbd5e1;
+			QPushButton { background-color:#ffffff; color:#5B6676; border:1px solid #D7DEE7;
 				border-radius:6px; padding:5px 12px; font-size:9pt; font-weight:600; }
-			QPushButton:hover { background-color:#f8fafc; border-color:#0891b2; color:#0891b2; }
+			QPushButton:hover { background-color:#F7F9FB; border-color:#0F5C8E; color:#0F5C8E; }
 		""")
 		btn_reset.clicked.connect(lambda: self._well3d.reset_view())
 		tbar.addWidget(btn_reset)
@@ -475,10 +475,10 @@ class WellPlacementPage(QWidget):
 		self.btn_top_layer.setCheckable(True)
 		self.btn_top_layer.setChecked(False)
 		self.btn_top_layer.setStyleSheet("""
-			QPushButton { background-color:#ffffff; color:#475569; border:1px solid #cbd5e1;
+			QPushButton { background-color:#ffffff; color:#5B6676; border:1px solid #D7DEE7;
 				border-radius:6px; padding:5px 12px; font-size:9pt; font-weight:600; }
-			QPushButton:hover { background-color:#fffbeb; border-color:#f59e0b; color:#d97706; }
-			QPushButton:checked { background-color:#fef3c7; border-color:#f59e0b; color:#d97706;
+			QPushButton:hover { background-color:#F7E9D2; border-color:#A86A15; color:#6B4710; }
+			QPushButton:checked { background-color:#F7E9D2; border-color:#A86A15; color:#6B4710;
 				font-weight: 700; }
 		""")
 		self.btn_top_layer.toggled.connect(self._on_top_layer_toggled)
@@ -488,9 +488,9 @@ class WellPlacementPage(QWidget):
 		self.btn_toggle_table.setFixedSize(34, 34)
 		self.btn_toggle_table.setToolTip("Hide Details")
 		self.btn_toggle_table.setStyleSheet("""
-			QPushButton { background-color:#ffffff; color:#475569; border:1px solid #cbd5e1;
+			QPushButton { background-color:#ffffff; color:#5B6676; border:1px solid #D7DEE7;
 				border-radius:6px; font-size:11pt; font-weight:bold; padding:0px; }
-			QPushButton:hover { background-color:#f8fafc; border-color:#0891b2; color:#0891b2; }
+			QPushButton:hover { background-color:#F7F9FB; border-color:#0F5C8E; color:#0F5C8E; }
 		""")
 		self.btn_toggle_table.clicked.connect(self._toggle_table_panel)
 		tbar.addWidget(self.btn_toggle_table)
@@ -512,18 +512,18 @@ class WellPlacementPage(QWidget):
 
 		# ── Right panel ────────────────────────────────────────────────────────
 		self.right_panel = QWidget()
-		self.right_panel.setStyleSheet("background-color: #f8fafc;")
+		self.right_panel.setStyleSheet("background-color: #F7F9FB;")
 		right_layout = QVBoxLayout(self.right_panel)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
 
 		right_header = QWidget()
-		right_header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #cbd5e1;")
+		right_header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #D7DEE7;")
 		rh = QHBoxLayout(right_header)
 		rh.setContentsMargins(16, 8, 16, 8)
 		QLabel_w = QLabel("Well List")
 		QLabel_w.setStyleSheet(
-			"font-size: 11pt; font-weight: 800; color: #0f172a; letter-spacing: 0.5px;"
+			"font-size: 11pt; font-weight: 700; color: #1F2937; letter-spacing: 0.5px;"
 		)
 		rh.addWidget(QLabel_w)
 		rh.addStretch(1)
@@ -556,7 +556,7 @@ class WellPlacementPage(QWidget):
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
-				border-top: 1px solid #e2e8f0;
+				border-top: 1px solid #D7DEE7;
 				border-top-left-radius: 14px; border-top-right-radius: 14px;
 			}
 		""")
@@ -573,7 +573,7 @@ class WellPlacementPage(QWidget):
 		# Well type
 		type_lbl = QLabel("WELL TYPE")
 		type_lbl.setStyleSheet(
-			"font-size: 7.5pt; font-weight: 800; color: #94a3b8; letter-spacing: 1.2px;"
+			"font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;"
 		)
 		bot_layout.addWidget(type_lbl)
 
@@ -585,9 +585,9 @@ class WellPlacementPage(QWidget):
 		type_seg_layout.setSpacing(2)
 
 		self.btn_prod = QPushButton("Production")
-		self.btn_prod.setIcon(_make_badge_icon("P", "#ea580c"))
+		self.btn_prod.setIcon(_make_badge_icon("P", "#B7791F"))
 		self.btn_inj = QPushButton("Injection")
-		self.btn_inj.setIcon(_make_badge_icon("I", "#2563eb"))
+		self.btn_inj.setIcon(_make_badge_icon("I", "#2563A6"))
 		for btn in (self.btn_prod, self.btn_inj):
 			btn.setCheckable(True)
 			btn.setIconSize(QSize(16, 16))
@@ -605,7 +605,7 @@ class WellPlacementPage(QWidget):
 		# Well model
 		model_lbl = QLabel("WELL MODEL")
 		model_lbl.setStyleSheet(
-			"font-size: 7.5pt; font-weight: 800; color: #94a3b8; letter-spacing: 1.2px; margin-top: 6px;"
+			"font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px; margin-top: 6px;"
 		)
 		bot_layout.addWidget(model_lbl)
 
@@ -617,11 +617,11 @@ class WellPlacementPage(QWidget):
 		model_seg_layout.setSpacing(2)
 
 		self.btn_simple = QPushButton("Simple Flowrate")
-		self.btn_simple.setIcon(_make_badge_icon("S", "#0891b2"))
+		self.btn_simple.setIcon(_make_badge_icon("S", "#0F5C8E"))
 		self.btn_peaceman = QPushButton("Peaceman")
-		self.btn_peaceman.setIcon(_make_badge_icon("P", "#0891b2"))
+		self.btn_peaceman.setIcon(_make_badge_icon("P", "#0F5C8E"))
 		self.btn_model3 = QPushButton("Model #3")
-		self.btn_model3.setIcon(_make_badge_icon("3", "#0891b2"))
+		self.btn_model3.setIcon(_make_badge_icon("3", "#0F5C8E"))
 		for btn in (self.btn_simple, self.btn_peaceman, self.btn_model3):
 			btn.setCheckable(True)
 			btn.setIconSize(QSize(16, 16))
@@ -642,24 +642,17 @@ class WellPlacementPage(QWidget):
 		self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
 		self.btn_save.setStyleSheet("""
 			QPushButton {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #06b6d4, stop:1 #0891b2);
+				background-color: #0F5C8E;
 				color: #ffffff; border: none;
 				border-radius: 9px; padding: 10px 18px;
-				font-size: 9.5pt; font-weight: 800; min-height: 38px; margin-top: 10px;
+				font-size: 9.5pt; font-weight: 700; min-height: 38px; margin-top: 10px;
 				letter-spacing: 0.3px;
 			}
 			QPushButton:hover {
-				background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-					stop:0 #0891b2, stop:1 #0e7490);
+				background-color: #2E7DAE;
 			}
-			QPushButton:pressed { background-color: #155e75; }
+			QPushButton:pressed { background-color: #0C4A73; }
 		""")
-		save_shadow = QGraphicsDropShadowEffect(self.btn_save)
-		save_shadow.setBlurRadius(18)
-		save_shadow.setColor(QColor(8, 145, 178, 110))
-		save_shadow.setOffset(0, 4)
-		self.btn_save.setGraphicsEffect(save_shadow)
 		self.btn_save.clicked.connect(self._on_save_changes)
 		bot_layout.addWidget(self.btn_save)
 
@@ -749,7 +742,7 @@ class WellPlacementPage(QWidget):
 		menu.setStyleSheet("""
 			QMenu {
 				background-color: #ffffff;
-				border: 1px solid #e2e8f0;
+				border: 1px solid #D7DEE7;
 				border-radius: 8px;
 				padding: 4px;
 				font-size: 9.5pt;
@@ -757,11 +750,11 @@ class WellPlacementPage(QWidget):
 			QMenu::item {
 				padding: 9px 18px 9px 12px;
 				border-radius: 5px;
-				color: #0f172a;
+				color: #1F2937;
 				min-width: 160px;
 			}
-			QMenu::item:selected { background-color: #f1f5f9; }
-			QMenu::separator { height: 1px; background: #e2e8f0; margin: 3px 8px; }
+			QMenu::item:selected { background-color: #EEF2F6; }
+			QMenu::separator { height: 1px; background: #D7DEE7; margin: 3px 8px; }
 		""")
 
 		other_type  = "injection" if well.well_type == "production" else "production"
@@ -920,8 +913,8 @@ class WellPlacementPage(QWidget):
 				f"MODE PINDAH: {moving_name}  ·  Klik sel tujuan  ·  Esc untuk batal"
 			)
 			self._well_status.setStyleSheet("""
-				background-color: #fef3c7; color: #b45309;
-				border: 1px solid #fcd34d; border-radius: 8px;
+				background-color: #F7E9D2; color: #6B4710;
+				border: 1px solid #A86A15; border-radius: 8px;
 				padding: 6px 14px; font-size: 9pt; font-weight: 700;
 			""")
 		else:
@@ -929,8 +922,8 @@ class WellPlacementPage(QWidget):
 				f"Grid {nx}×{ny}×{nz}  ·  {n_prod} Prod  ·  {n_inj} Inj"
 			)
 			self._well_status.setStyleSheet("""
-				background-color: #ecfeff; color: #0891b2;
-				border: 1px solid #bae6fd; border-radius: 8px;
+				background-color: #DCEAF7; color: #0F5C8E;
+				border: 1px solid #A9CCE5; border-radius: 8px;
 				padding: 6px 14px; font-size: 9pt; font-weight: 600;
 			""")
 
@@ -948,7 +941,7 @@ class WellPlacementPage(QWidget):
 			ph.setWordWrap(True)
 			ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
 			ph.setStyleSheet(
-				"color: #64748b; font-size: 10pt; font-style: italic; padding: 40px;"
+				"color: #5B6676; font-size: 10pt; font-style: italic; padding: 40px;"
 			)
 			self.scroll_layout.insertWidget(0, ph)
 			return
@@ -960,30 +953,23 @@ class WellPlacementPage(QWidget):
 	def _build_well_card(self, well: WellConfig) -> QFrame:
 		is_prod = well.well_type == "production"
 		is_sel = well.cell_id == self._selected_well_cell
-		type_color = "#ea580c" if is_prod else "#2563eb"
+		type_color = "#B7791F" if is_prod else "#2563A6"
 
 		card = QFrame()
 		card.setObjectName("wellCard")
 		card.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-		border_color = "#0891b2" if is_sel else "#cbd5e1"
+		border_color = "#0F5C8E" if is_sel else "#D7DEE7"
 		card.setStyleSheet(f"""
 			QFrame#wellCard {{
 				background-color: #ffffff;
 				border: 1.5px solid {border_color};
-				border-left: 4px solid {type_color};
 				border-radius: 8px;
 			}}
 			QFrame#wellCard:hover {{
-				border-color: {'#0891b2' if is_sel else '#94a3b8'};
-				background-color: #f8fafc;
+				border-color: {'#0F5C8E' if is_sel else '#B8C3D1'};
+				background-color: #F7F9FB;
 			}}
 		""")
-
-		shadow = QGraphicsDropShadowEffect(card)
-		shadow.setBlurRadius(10)
-		shadow.setColor(QColor(15, 23, 42, 18))
-		shadow.setOffset(0, 2)
-		card.setGraphicsEffect(shadow)
 
 		card_layout = QVBoxLayout(card)
 		card_layout.setContentsMargins(12, 10, 12, 10)
@@ -995,10 +981,10 @@ class WellPlacementPage(QWidget):
 
 		name_edit = QLineEdit(well.name)
 		name_edit.setStyleSheet("""
-			QLineEdit { font-size: 10pt; font-weight: 800; color: #0f172a;
+			QLineEdit { font-size: 10pt; font-weight: 700; color: #1F2937;
 				border: none; border-bottom: 1.5px solid transparent;
 				background: transparent; padding: 1px 2px; }
-			QLineEdit:focus { border-bottom-color: #0891b2; background: #f0f9ff; }
+			QLineEdit:focus { border-bottom-color: #0F5C8E; background: #DCEAF7; }
 		""")
 		name_edit.textChanged.connect(
 			lambda text, cid=well.cell_id: self._rename_well(cid, text)
@@ -1015,11 +1001,11 @@ class WellPlacementPage(QWidget):
 			f"Cell ID: {well.cell_id}  ·  {_model_display(well.well_model)}  ·  "
 			f"{well.flowrate:.0f} STB/day"
 		)
-		info_lbl.setStyleSheet("font-size: 8.5pt; color: #64748b;")
+		info_lbl.setStyleSheet("font-size: 8.5pt; color: #5B6676;")
 		card_layout.addWidget(info_lbl)
 
 		hint_lbl = QLabel("Klik kanan untuk opsi")
-		hint_lbl.setStyleSheet("font-size: 7.5pt; color: #94a3b8; font-style: italic;")
+		hint_lbl.setStyleSheet("font-size: 7.5pt; color: #93A1B2; font-style: italic;")
 		card_layout.addWidget(hint_lbl)
 
 		card.customContextMenuRequested.connect(

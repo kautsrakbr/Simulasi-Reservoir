@@ -3,7 +3,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
 	QFrame,
-	QGraphicsDropShadowEffect,
 	QHBoxLayout,
 	QLabel,
 	QScrollArea,
@@ -55,11 +54,6 @@ class DashboardPage(QWidget):
 		# ── Unified Report Canvas (Flat, clean canvas layout) ─────────────────
 		self.canvas = QFrame(content)
 		self.canvas.setObjectName("resultCard")
-		canvas_shadow = QGraphicsDropShadowEffect(self.canvas)
-		canvas_shadow.setBlurRadius(22)
-		canvas_shadow.setColor(QColor(15, 23, 42, 25))
-		canvas_shadow.setOffset(0, 4)
-		self.canvas.setGraphicsEffect(canvas_shadow)
 		canvas_lay = QVBoxLayout(self.canvas)
 		canvas_lay.setContentsMargins(24, 24, 24, 24)
 		canvas_lay.setSpacing(20)
@@ -77,7 +71,7 @@ class DashboardPage(QWidget):
 		# Table 1: Specs & Grid Geometry
 		self._lbl_table1 = QLabel("1. SPESIFIKASI KASUS & STRUKTUR GRID")
 		self._lbl_table1.setObjectName("dashCardTitle")
-		self._lbl_table1.setStyleSheet("color: #0891b2; font-weight: 800; font-size: 9.5pt;")
+		self._lbl_table1.setStyleSheet("color: #0F5C8E; font-weight: 700; font-size: 9.5pt;")
 		canvas_lay.addWidget(self._lbl_table1)
 
 		self.table_specs = QTableWidget(5, 2)
@@ -100,7 +94,7 @@ class DashboardPage(QWidget):
 		# Table 2: Initial Saturations
 		self._lbl_table2 = QLabel("2. SATURASI FLUIDA & KONDISI BATAS AWAL")
 		self._lbl_table2.setObjectName("dashCardTitle")
-		self._lbl_table2.setStyleSheet("color: #0891b2; font-weight: 800; font-size: 9.5pt;")
+		self._lbl_table2.setStyleSheet("color: #0F5C8E; font-weight: 700; font-size: 9.5pt;")
 		canvas_lay.addWidget(self._lbl_table2)
 
 		self.table_fluids = QTableWidget(4, 2)
@@ -122,7 +116,7 @@ class DashboardPage(QWidget):
 		# Table 3: Numerical Validation
 		self._lbl_table3 = QLabel("3. KELAYAKAN SIMULASI & INTEGRITAS DATA")
 		self._lbl_table3.setObjectName("dashCardTitle")
-		self._lbl_table3.setStyleSheet("color: #0891b2; font-weight: 800; font-size: 9.5pt;")
+		self._lbl_table3.setStyleSheet("color: #0F5C8E; font-weight: 700; font-size: 9.5pt;")
 		canvas_lay.addWidget(self._lbl_table3)
 
 		self.table_valid = QTableWidget(2, 2)
@@ -172,9 +166,9 @@ class DashboardPage(QWidget):
 		state_text = "Terdapat Perubahan (Belum Disimpan)" if project_config.is_dirty else "Sudah Disimpan & Up-to-date"
 		item_state = QTableWidgetItem(state_text)
 		if project_config.is_dirty:
-			item_state.setForeground(QBrush(QColor("#b45309")))
+			item_state.setForeground(QBrush(QColor("#A86A15")))
 		else:
-			item_state.setForeground(QBrush(QColor("#059669")))
+			item_state.setForeground(QBrush(QColor("#2D6A4F")))
 		self.table_specs.setItem(2, 1, item_state)
 
 		gs = project_config.grid_spec
@@ -193,16 +187,16 @@ class DashboardPage(QWidget):
 		# Update Table 3: Validation
 		if validation_errors:
 			item_status = QTableWidgetItem("Gagal Validasi (Ada Hambatan)")
-			item_status.setForeground(QBrush(QColor("#dc2626")))
+			item_status.setForeground(QBrush(QColor("#B2413F")))
 			item_issues = QTableWidgetItem(" • " + "; ".join(validation_errors))
-			item_issues.setForeground(QBrush(QColor("#dc2626")))
+			item_issues.setForeground(QBrush(QColor("#B2413F")))
 			self._status_badge.setText("INCOMPLETE")
 			self._status_badge.setObjectName("dashBadgeError")
 		else:
 			item_status = QTableWidgetItem("Lolos Validasi (Siap Jalan)")
-			item_status.setForeground(QBrush(QColor("#059669")))
+			item_status.setForeground(QBrush(QColor("#2D6A4F")))
 			item_issues = QTableWidgetItem("Semua persyaratan terpenuhi, tidak ada error.")
-			item_issues.setForeground(QBrush(QColor("#475569")))
+			item_issues.setForeground(QBrush(QColor("#5B6676")))
 			self._status_badge.setText("READY")
 			self._status_badge.setObjectName("dashBadgeReady")
 
