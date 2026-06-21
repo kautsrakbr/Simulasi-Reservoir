@@ -203,26 +203,6 @@ class MainWindow(QMainWindow):
 		top_bar_layout.addWidget(logo_lbl)
 		top_bar_layout.addStretch(1)
 
-		# Project Actions (New, Open, Save) on the right
-		actions_widget = QWidget(self._top_bar)
-		actions_layout = QHBoxLayout(actions_widget)
-		actions_layout.setContentsMargins(0, 0, 0, 0)
-		actions_layout.setSpacing(8)
-
-		btn_new = QPushButton("New", actions_widget)
-		btn_open = QPushButton("Open", actions_widget)
-		btn_save = QPushButton("Save", actions_widget)
-
-		for btn in (btn_new, btn_open, btn_save):
-			btn.setObjectName("topActionBtn")
-			btn.setCursor(Qt.CursorShape.PointingHandCursor)
-			actions_layout.addWidget(btn)
-
-		btn_new.clicked.connect(self._new_project)
-		btn_open.clicked.connect(self._open_project)
-		btn_save.clicked.connect(self._save_project)
-
-		top_bar_layout.addWidget(actions_widget)
 		central_layout.addWidget(self._top_bar)
 
 		# mainSplitter layout: Sidebar + Stacked Widget
@@ -333,6 +313,18 @@ class MainWindow(QMainWindow):
 		open_action.triggered.connect(self._open_project)
 		save_action.triggered.connect(self._save_project)
 		save_as_action.triggered.connect(self._save_project_as)
+
+		# Quick-access New/Open/Save next to the "Project" menu, rendered
+		# as plain menu bar entries so they share its native look.
+		quick_new = QAction("New", self)
+		quick_open = QAction("Open", self)
+		quick_save = QAction("Save", self)
+		quick_new.triggered.connect(self._new_project)
+		quick_open.triggered.connect(self._open_project)
+		quick_save.triggered.connect(self._save_project)
+		self.menuBar().addAction(quick_new)
+		self.menuBar().addAction(quick_open)
+		self.menuBar().addAction(quick_save)
 
 	def _open_dashboard_tab(self) -> None:
 		self._switch_to_page(0)

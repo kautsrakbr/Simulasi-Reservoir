@@ -59,26 +59,6 @@ QPushButton#topNavItem:checked {
 	font-weight: 700;
 }
 
-QPushButton#topActionBtn {
-	background-color: #ffffff;
-	color: #5B6676;
-	border: 1px solid #D7DEE7;
-	border-radius: 6px;
-	padding: 5px 12px;
-	font-size: 9.5pt;
-	font-weight: 600;
-}
-
-QPushButton#topActionBtn:hover {
-	background-color: #F7F9FB;
-	color: #1F2937;
-	border-color: #0F5C8E;
-}
-
-QPushButton#topActionBtn:pressed {
-	background-color: #D7DEE7;
-}
-
 /* ── Tab Bar ────────────────────────────────────────────────── */
 QTabWidget#resultTabs, QTabWidget#inputTabs {
 	background: #EEF2F6;
