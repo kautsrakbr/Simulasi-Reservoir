@@ -53,3 +53,4 @@ class RunResult:
 	case_name: str = "Base Case"
 	steps: list[TimeStepResult] = field(default_factory=list)
 	warnings: list[str] = field(default_factory=list)
+	total_elapsed_seconds: float = 0.0

@@ -36,7 +36,6 @@ def _model_display(model: str) -> str:
 	return {
 		"simple_flowrate": "Simple Flowrate",
 		"peaceman": "Peaceman",
-		"well_model_3": "Model #3",
 	}.get(model, model)
 
 
@@ -553,6 +552,7 @@ class WellPlacementPage(QWidget):
 		# ── Bottom controls ────────────────────────────────────────────────────
 		bottom = QWidget()
 		bottom.setObjectName("bottomPanel")
+		bottom.setMinimumHeight(232)
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
@@ -567,19 +567,27 @@ class WellPlacementPage(QWidget):
 		bottom.setGraphicsEffect(bottom_shadow)
 
 		bot_layout = QVBoxLayout(bottom)
-		bot_layout.setContentsMargins(16, 16, 16, 16)
-		bot_layout.setSpacing(7)
+		bot_layout.setContentsMargins(16, 12, 16, 12)
+		bot_layout.setSpacing(6)
 
-		# Well type
+		# Well type (+ saved status chip on the same row)
+		header_row = QHBoxLayout()
+		header_row.setSpacing(8)
 		type_lbl = QLabel("WELL TYPE")
 		type_lbl.setStyleSheet(
 			"font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;"
 		)
-		bot_layout.addWidget(type_lbl)
+		header_row.addWidget(type_lbl)
+		header_row.addStretch(1)
+		self._saved_status_chip = QLabel("")
+		self._saved_status_chip.setObjectName("pageStatusChip")
+		header_row.addWidget(self._saved_status_chip)
+		bot_layout.addLayout(header_row)
 
 		type_seg = QWidget()
 		type_seg.setObjectName("segContainer")
 		type_seg.setStyleSheet(_SEG_CONTAINER_QSS)
+		type_seg.setMinimumHeight(48)
 		type_seg_layout = QHBoxLayout(type_seg)
 		type_seg_layout.setContentsMargins(3, 3, 3, 3)
 		type_seg_layout.setSpacing(2)
@@ -605,13 +613,14 @@ class WellPlacementPage(QWidget):
 		# Well model
 		model_lbl = QLabel("WELL MODEL")
 		model_lbl.setStyleSheet(
-			"font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px; margin-top: 6px;"
+			"font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;"
 		)
 		bot_layout.addWidget(model_lbl)
 
 		model_seg = QWidget()
 		model_seg.setObjectName("segContainer")
 		model_seg.setStyleSheet(_SEG_CONTAINER_QSS)
+		model_seg.setMinimumHeight(48)
 		model_seg_layout = QHBoxLayout(model_seg)
 		model_seg_layout.setContentsMargins(3, 3, 3, 3)
 		model_seg_layout.setSpacing(2)
@@ -620,9 +629,7 @@ class WellPlacementPage(QWidget):
 		self.btn_simple.setIcon(_make_badge_icon("S", "#0F5C8E"))
 		self.btn_peaceman = QPushButton("Peaceman")
 		self.btn_peaceman.setIcon(_make_badge_icon("P", "#0F5C8E"))
-		self.btn_model3 = QPushButton("Model #3")
-		self.btn_model3.setIcon(_make_badge_icon("3", "#0F5C8E"))
-		for btn in (self.btn_simple, self.btn_peaceman, self.btn_model3):
+		for btn in (self.btn_simple, self.btn_peaceman):
 			btn.setCheckable(True)
 			btn.setIconSize(QSize(16, 16))
 			btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -632,29 +639,19 @@ class WellPlacementPage(QWidget):
 		self.model_group = QButtonGroup(self)
 		self.model_group.addButton(self.btn_simple)
 		self.model_group.addButton(self.btn_peaceman)
-		self.model_group.addButton(self.btn_model3)
 		self.model_group.setExclusive(True)
 		self.btn_simple.setChecked(True)
-		bot_layout.addWidget(model_seg)
 
-		# Save Changes button
-		self.btn_save = QPushButton("✓   Save Changes")
+		model_row = QHBoxLayout()
+		model_row.setSpacing(10)
+		model_row.addWidget(model_seg, 1)
+		self.btn_save = QPushButton("Simpan")
+		self.btn_save.setObjectName("constraintSaveButton")
+		self.btn_save.setMinimumSize(118, 46)
 		self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
-		self.btn_save.setStyleSheet("""
-			QPushButton {
-				background-color: #0F5C8E;
-				color: #ffffff; border: none;
-				border-radius: 9px; padding: 10px 18px;
-				font-size: 9.5pt; font-weight: 700; min-height: 38px; margin-top: 10px;
-				letter-spacing: 0.3px;
-			}
-			QPushButton:hover {
-				background-color: #2E7DAE;
-			}
-			QPushButton:pressed { background-color: #0C4A73; }
-		""")
 		self.btn_save.clicked.connect(self._on_save_changes)
-		bot_layout.addWidget(self.btn_save)
+		model_row.addWidget(self.btn_save)
+		bot_layout.addLayout(model_row)
 
 		right_layout.addWidget(bottom)
 
@@ -677,6 +674,30 @@ class WellPlacementPage(QWidget):
 		self._pending_wells = list(project_config.wells)
 		self._selected_well_cell = None
 		self._refresh_well_view()
+
+	def _refresh_saved_status_chip(self) -> None:
+		if self.project_config is None:
+			return
+		confirmed = self.project_config.constraints.wells_confirmed
+		if confirmed:
+			n_prod = sum(1 for w in self.project_config.wells if w.well_type == "production")
+			n_inj = sum(1 for w in self.project_config.wells if w.well_type == "injection")
+			self._saved_status_chip.setText(f"Aktif untuk Run: {len(self.project_config.wells)} sumur ({n_prod}P/{n_inj}I)")
+			self._saved_status_chip.setProperty("chipKind", "ok")
+		else:
+			self._saved_status_chip.setText("Belum Disimpan")
+			self._saved_status_chip.setProperty("chipKind", "empty")
+		self._saved_status_chip.style().unpolish(self._saved_status_chip)
+		self._saved_status_chip.style().polish(self._saved_status_chip)
+		self.btn_save.setEnabled((not confirmed) or self._is_wells_dirty())
+
+	def _is_wells_dirty(self) -> bool:
+		if self.project_config is None:
+			return True
+		key = lambda w: (w.cell_id, w.well_type, w.well_model, w.name)
+		saved = sorted(key(w) for w in self.project_config.wells)
+		pending = sorted(key(w) for w in self._pending_wells)
+		return saved != pending
 
 	# ── Internal slots ──────────────────────────────────────────────────────────
 
@@ -759,8 +780,13 @@ class WellPlacementPage(QWidget):
 
 		other_type  = "injection" if well.well_type == "production" else "production"
 		other_label = "Injection" if other_type == "injection" else "Production"
+		is_peaceman = well.well_model == "peaceman"
 
-		act_flowrate = menu.addAction(f"  Ubah Flowrate  ({well.flowrate:.0f} STB/day)")
+		if is_peaceman:
+			act_bhp = menu.addAction(f"  Ubah BHP  ({well.bhp:.0f} psia)")
+			act_rw  = menu.addAction(f"  Ubah Wellbore Radius  ({well.wellbore_radius:.2f} ft)")
+		else:
+			act_flowrate = menu.addAction(f"  Ubah Flowrate  ({well.flowrate:.0f} STB/day)")
 		act_switch   = menu.addAction(f"  Ubah ke {other_label}")
 		act_move     = menu.addAction(f"  Pindahkan  {well.name}")
 		menu.addSeparator()
@@ -775,7 +801,11 @@ class WellPlacementPage(QWidget):
 		elif action == act_move:
 			self._moving_well_cell = cell_id
 			self._refresh_well_view()
-		elif action == act_flowrate:
+		elif is_peaceman and action == act_bhp:
+			self._show_bhp_dialog(cell_id, well)
+		elif is_peaceman and action == act_rw:
+			self._show_wellbore_radius_dialog(cell_id, well)
+		elif not is_peaceman and action == act_flowrate:
 			self._show_flowrate_dialog(cell_id, well)
 
 	def _switch_well_type(self, cell_id: int, new_type: str) -> None:
@@ -799,6 +829,34 @@ class WellPlacementPage(QWidget):
 			well.flowrate = val
 			self._refresh_well_view()
 
+	def _show_bhp_dialog(self, cell2d: int, well: WellConfig) -> None:
+		val, ok = QInputDialog.getDouble(
+			self,
+			f"Ubah BHP — {well.name}",
+			"Bottomhole Pressure (psia):",
+			well.bhp,
+			0.0,
+			999_999.0,
+			1,
+		)
+		if ok:
+			well.bhp = val
+			self._refresh_well_view()
+
+	def _show_wellbore_radius_dialog(self, cell2d: int, well: WellConfig) -> None:
+		val, ok = QInputDialog.getDouble(
+			self,
+			f"Ubah Wellbore Radius — {well.name}",
+			"Wellbore Radius rw (ft):",
+			well.wellbore_radius,
+			0.01,
+			10.0,
+			2,
+		)
+		if ok:
+			well.wellbore_radius = val
+			self._refresh_well_view()
+
 	def _on_well_drag_moved(self, from_cell2d: int, to_cell3d: int) -> None:
 		gs    = self.project_config.grid_spec
 		plane = gs.nx * gs.ny
@@ -818,8 +876,6 @@ class WellPlacementPage(QWidget):
 	def _get_selected_model(self) -> str:
 		if self.btn_peaceman.isChecked():
 			return "peaceman"
-		if self.btn_model3.isChecked():
-			return "well_model_3"
 		return "simple_flowrate"
 
 	def _on_top_layer_toggled(self, checked: bool) -> None:
@@ -881,6 +937,7 @@ class WellPlacementPage(QWidget):
 	def _refresh_well_view(self) -> None:
 		if self.project_config is None:
 			return
+		self._refresh_saved_status_chip()
 		gs = self.project_config.grid_spec
 		nx, ny, nz = gs.nx, gs.ny, getattr(gs, "nz", 1)
 
@@ -996,10 +1053,13 @@ class WellPlacementPage(QWidget):
 		header_row.addWidget(type_lbl)
 		card_layout.addLayout(header_row)
 
-		# Cell location + model + flowrate (read-only — edit via right-click menu)
+		# Cell location + model + control parameter (read-only — edit via right-click menu)
+		if well.well_model == "peaceman":
+			control_text = f"BHP {well.bhp:.0f} psia"
+		else:
+			control_text = f"{well.flowrate:.0f} STB/day"
 		info_lbl = QLabel(
-			f"Cell ID: {well.cell_id}  ·  {_model_display(well.well_model)}  ·  "
-			f"{well.flowrate:.0f} STB/day"
+			f"Cell ID: {well.cell_id}  ·  {_model_display(well.well_model)}  ·  {control_text}"
 		)
 		info_lbl.setStyleSheet("font-size: 8.5pt; color: #5B6676;")
 		card_layout.addWidget(info_lbl)

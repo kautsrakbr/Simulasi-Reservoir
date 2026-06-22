@@ -119,6 +119,7 @@ class MethodsPage(QWidget):
 		super().__init__()
 		self._saved_method = "newton_raphson"
 		self._draft_method = "newton_raphson"
+		self._confirmed = False
 
 		outer = QVBoxLayout(self)
 		outer.setContentsMargins(0, 0, 0, 0)
@@ -174,9 +175,18 @@ class MethodsPage(QWidget):
 		mode_row.addWidget(self.btn_quasi, 1)
 		control_root.addLayout(mode_row)
 
-		self.active_label = QLabel()
-		self.active_label.setObjectName("methodActiveLabel")
-		control_root.addWidget(self.active_label)
+		save_row = QHBoxLayout()
+		save_row.setSpacing(10)
+		self._status_chip = QLabel("")
+		self._status_chip.setObjectName("pageStatusChip")
+		save_row.addWidget(self._status_chip)
+		save_row.addStretch(1)
+		self.btn_save_method = QPushButton("Simpan Method")
+		self.btn_save_method.setObjectName("constraintSaveButton")
+		self.btn_save_method.setMinimumSize(142, 42)
+		self.btn_save_method.setCursor(Qt.CursorShape.PointingHandCursor)
+		save_row.addWidget(self.btn_save_method)
+		control_root.addLayout(save_row)
 		root.addWidget(control_panel)
 
 		cards_row = QHBoxLayout()
@@ -190,6 +200,7 @@ class MethodsPage(QWidget):
 
 		self.btn_newton.clicked.connect(lambda: self._activate_method("newton_raphson"))
 		self.btn_quasi.clicked.connect(lambda: self._activate_method("quasi_newton"))
+		self.btn_save_method.clicked.connect(self._save_method)
 		self._set_draft_method("newton_raphson")
 
 	def set_project(self, project_config: ProjectConfig) -> None:
@@ -197,6 +208,7 @@ class MethodsPage(QWidget):
 		if method not in _METHOD_COPY:
 			method = "newton_raphson"
 		self._saved_method = method
+		self._confirmed = project_config.constraints.methods_confirmed
 		self._set_draft_method(method)
 
 	def _set_draft_method(self, method_key: str) -> None:
@@ -205,17 +217,23 @@ class MethodsPage(QWidget):
 		self.btn_quasi.setChecked(method_key == "quasi_newton")
 		self.newton_card.set_active(method_key == "newton_raphson")
 		self.quasi_card.set_active(method_key == "quasi_newton")
-		active_title = _METHOD_COPY[self._saved_method]["title"]
-		self.active_label.setText(f"Active method: {active_title}.")
+
+		if self._confirmed:
+			title = _METHOD_COPY[self._saved_method]["title"]
+			self._status_chip.setText(f"Aktif untuk Run: {title}")
+			self._status_chip.setProperty("chipKind", "ok")
+		else:
+			self._status_chip.setText("Belum Disimpan")
+			self._status_chip.setProperty("chipKind", "empty")
+		self._status_chip.style().unpolish(self._status_chip)
+		self._status_chip.style().polish(self._status_chip)
+		self.btn_save_method.setEnabled((not self._confirmed) or self._draft_method != self._saved_method)
 
 	def _activate_method(self, method_key: str) -> None:
-		if method_key == self._saved_method:
-			self._set_draft_method(method_key)
-			return
-		self._draft_method = method_key
-		self._save_method()
+		self._set_draft_method(method_key)
 
 	def _save_method(self) -> None:
 		self._saved_method = self._draft_method
+		self._confirmed = True
 		self._set_draft_method(self._draft_method)
 		self.methodSaved.emit(MethodConfig(active_method=self._draft_method))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from engine.domain.project import PerturbationConfig, ProjectConfig, WellConfig
+from engine.domain.project import ConstraintStatus, PerturbationConfig, ProjectConfig, WellConfig
 from engine.io.grid_reader import read_grid_spec
 from engine.io.ref_reader import read_reference_data
 
@@ -67,6 +67,8 @@ def _deserialize_wells(wells_data: object) -> list[WellConfig]:
 			cell_id=_as_int(d.get("cell_id"), 1),
 			well_model=str(d.get("well_model", "simple_flowrate")),
 			flowrate=_as_float(d.get("flowrate"), 100.0),
+			bhp=_as_float(d.get("bhp"), 500.0),
+			wellbore_radius=_as_float(d.get("wellbore_radius"), 0.5),
 		))
 	return result
 
@@ -151,6 +153,10 @@ def load_project(payload: dict[str, object]) -> ProjectConfig:
 		solver_payload.get("residual_tolerance"),
 		project.solver.residual_tolerance,
 	)
+	project.solver.jacobian_refresh_interval = max(1, _as_int(
+		solver_payload.get("jacobian_refresh_interval"),
+		project.solver.jacobian_refresh_interval,
+	))
 	# Legacy projects stored one shared "parameter_tolerance" for both Δp and ΔS;
 	# fall back to it when the split keys are absent so old files keep their value.
 	legacy_tolerance = solver_payload.get("parameter_tolerance")
@@ -223,6 +229,14 @@ def load_project(payload: dict[str, object]) -> ProjectConfig:
 	if active_method not in {"newton_raphson", "quasi_newton"}:
 		active_method = project.methods.active_method
 	project.methods.active_method = active_method
+
+	constraints_raw = _as_dict(payload.get("constraints", {}))
+	project.constraints = ConstraintStatus(
+		grid_confirmed=_as_bool(constraints_raw.get("grid_confirmed"), False),
+		wells_confirmed=_as_bool(constraints_raw.get("wells_confirmed"), False),
+		perturbation_confirmed=_as_bool(constraints_raw.get("perturbation_confirmed"), False),
+		methods_confirmed=_as_bool(constraints_raw.get("methods_confirmed"), False),
+	)
 	project.is_dirty = _as_bool(payload.get("is_dirty"), False)
 	return project
 

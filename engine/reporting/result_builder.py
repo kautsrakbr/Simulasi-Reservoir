@@ -24,9 +24,11 @@ def build_run_result(
 	case_name: str,
 	steps: list[TimeStepResult] | None = None,
 	warnings: list[str] | None = None,
+	total_elapsed_seconds: float = 0.0,
 ) -> RunResult:
 	return RunResult(
 		case_name=case_name,
 		steps=steps or [],
 		warnings=warnings or [],
+		total_elapsed_seconds=total_elapsed_seconds,
 	)

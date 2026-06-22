@@ -15,12 +15,19 @@ from PySide6.QtWidgets import (
 	QGridLayout,
 	QButtonGroup,
 	QGraphicsDropShadowEffect,
+	QSizePolicy,
 )
 
 from engine.domain.project import ProjectConfig
+from engine.domain.results import RunResult, TimeStepResult
+from engine.domain.state import ReservoirState
 from engine.grid.builder import build_grid
+from engine.physics.accumulation import assemble_accumulation_terms, compute_effective_pore_volume
+from engine.physics.flux import compute_phase_connection_fluxes, compute_phase_net_flux_per_cell
 from engine.physics.transmissibility import compute_transmissibility, update_grid_transmissibility
+from engine.simulation.initializer import initialize_state
 from engine.common.constants import TRANSMISSIBILITY_UNIT_FACTOR
+from modules.results_service import evaluate_cell_properties
 
 
 
@@ -280,7 +287,8 @@ class _Connectivity3DWidget(QWidget):
 						break
 			if cell is not None:
 				self.cell_clicked.emit(cell)
-				self.focus_on_cell(cell)
+				if self._focus_mode:
+					self.focus_on_cell(cell)
 		self._drag_pos = None
 		self._drag_btn = None
 		self._drag_moved = False
@@ -607,10 +615,17 @@ class _Connectivity3DWidget(QWidget):
 
 
 class Connectivity3DPage(QWidget):
-	def __init__(self) -> None:
+	connectivityChanged = Signal(int)
+
+	def __init__(self, *, show_bottom_controls: bool = True, detail_mode: str = "connections") -> None:
 		super().__init__()
+		self._show_bottom_controls = show_bottom_controls
+		self._detail_mode = detail_mode
 		self.project_config: ProjectConfig | None = None
+		self._run_result: RunResult | None = None
+		self._grid_model = None
 		self._selected_cell: int | None = None
+		self._connectivity_draft = 5
 		self._table_collapsed = False
 		self._saved_table_width = 380
 
@@ -621,7 +636,18 @@ class Connectivity3DPage(QWidget):
 		# ── Splitter Layout (Side-by-Side) ───────────────────────────────────
 		self.splitter = QSplitter(Qt.Orientation.Horizontal)
 		self.splitter.setObjectName("mainSplitter")
-		self.splitter.setStyleSheet("QSplitter::handle { background-color: #D7DEE7; height: 1px; width: 1px; }")
+		self.splitter.setHandleWidth(8)
+		self.splitter.setChildrenCollapsible(False)
+		self.splitter.setStyleSheet("""
+			QSplitter::handle {
+				background-color: #D7DEE7;
+				border-left: 1px solid #B8C3D1;
+				border-right: 1px solid #EEF2F6;
+			}
+			QSplitter::handle:hover {
+				background-color: #A9CCE5;
+			}
+		""")
 
 		# Left Panel: 3D Visualization + Toolbar
 		left_panel = QWidget()
@@ -754,6 +780,9 @@ class Connectivity3DPage(QWidget):
 		right_layout = QVBoxLayout(self.right_panel)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
+		if self._detail_mode != "connections":
+			self.right_panel.setMinimumWidth(320)
+			self.right_panel.setMaximumWidth(16777215)
 
 		# Right Header (Symmetrical to Left Toolbar)
 		right_header = QWidget()
@@ -764,9 +793,11 @@ class Connectivity3DPage(QWidget):
 		right_hbar.setSpacing(10)
 
 		# Details Group Label
-		table_label = QLabel("Selected Cell Connections")
-		table_label.setStyleSheet("font-size: 11pt; font-weight: 700; color: #1F2937; letter-spacing: 0.5px;")
-		right_hbar.addWidget(table_label)
+		self._detail_header_label = QLabel(
+			"Selected Cell Connections" if self._detail_mode == "connections" else "Selected Cell Diagnostics"
+		)
+		self._detail_header_label.setStyleSheet("font-size: 11pt; font-weight: 700; color: #1F2937; letter-spacing: 0.5px;")
+		right_hbar.addWidget(self._detail_header_label)
 		right_hbar.addStretch(1)
 
 		right_layout.addWidget(right_header)
@@ -782,6 +813,7 @@ class Connectivity3DPage(QWidget):
 		self.scroll_area.setWidgetResizable(True)
 		self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 		self.scroll_area.setStyleSheet("background-color: transparent;")
+		self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 		
 		self.scroll_content = QWidget()
 		self.scroll_content.setStyleSheet("background-color: transparent;")
@@ -795,92 +827,113 @@ class Connectivity3DPage(QWidget):
 
 		right_layout.addWidget(right_content_container, stretch=1)
 
-		# Premium Controls Container in the Bottom Right
-		bottom_controls = QWidget()
-		bottom_controls.setObjectName("bottomPanel")
-		bottom_controls.setStyleSheet("""
-			QWidget#bottomPanel {
-				background-color: #ffffff;
-				border-top: 1px solid #D7DEE7;
-				border-top-left-radius: 14px;
-				border-top-right-radius: 14px;
+		if self._show_bottom_controls:
+			bottom_controls = QWidget()
+			bottom_controls.setObjectName("bottomPanel")
+			bottom_controls.setMinimumHeight(118)
+			bottom_controls.setStyleSheet("""
+				QWidget#bottomPanel {
+					background-color: #ffffff;
+					border-top: 1px solid #D7DEE7;
+					border-top-left-radius: 14px;
+					border-top-right-radius: 14px;
+				}
+			""")
+			bottom_shadow = QGraphicsDropShadowEffect(bottom_controls)
+			bottom_shadow.setBlurRadius(24)
+			bottom_shadow.setColor(QColor(15, 23, 42, 35))
+			bottom_shadow.setOffset(0, -3)
+			bottom_controls.setGraphicsEffect(bottom_shadow)
+
+			bottom_layout = QVBoxLayout(bottom_controls)
+			bottom_layout.setContentsMargins(16, 12, 16, 12)
+			bottom_layout.setSpacing(6)
+
+			header_row = QHBoxLayout()
+			header_row.setSpacing(8)
+			model_label = QLabel("CONNECTIVITY MODEL")
+			model_label.setStyleSheet("font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;")
+			header_row.addWidget(model_label)
+			header_row.addStretch(1)
+			self._connectivity_status_chip = QLabel("")
+			self._connectivity_status_chip.setObjectName("pageStatusChip")
+			header_row.addWidget(self._connectivity_status_chip)
+			bottom_layout.addLayout(header_row)
+
+			seg_widget = QWidget()
+			seg_widget.setObjectName("segContainer")
+			seg_widget.setStyleSheet(
+				"QWidget#segContainer { background-color: #F1F4F8; border-radius: 10px; }"
+			)
+			seg_layout = QHBoxLayout(seg_widget)
+			seg_layout.setContentsMargins(3, 3, 3, 3)
+			seg_layout.setSpacing(2)
+			seg_widget.setMinimumHeight(52)
+
+			self.btn_5p = QPushButton("5 Points")
+			self.btn_9p = QPushButton("9 Points")
+			self.btn_11p = QPushButton("11 Points")
+			for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
+				btn.setCheckable(True)
+				btn.setCursor(Qt.CursorShape.PointingHandCursor)
+				seg_layout.addWidget(btn)
+
+			self.btn_group = QButtonGroup(self)
+			self.btn_group.addButton(self.btn_5p)
+			self.btn_group.addButton(self.btn_9p)
+			self.btn_group.addButton(self.btn_11p)
+			self.btn_group.setExclusive(True)
+			self.btn_5p.setChecked(True)
+
+			large_btn_style = """
+			QPushButton {
+				background-color: transparent;
+				color: #5B6676;
+				border: 1px solid transparent;
+				border-radius: 8px;
+				padding: 9px 22px;
+				font-size: 9.5pt;
+				font-weight: 700;
+				min-height: 32px;
 			}
-		""")
-		bottom_shadow = QGraphicsDropShadowEffect(bottom_controls)
-		bottom_shadow.setBlurRadius(24)
-		bottom_shadow.setColor(QColor(15, 23, 42, 35))
-		bottom_shadow.setOffset(0, -3)
-		bottom_controls.setGraphicsEffect(bottom_shadow)
+			QPushButton:hover {
+				background-color: #D7DEE7;
+				color: #1F2937;
+			}
+			QPushButton:checked {
+				background-color: #ffffff;
+				color: #1F2937;
+				font-weight: 700;
+				border: 1px solid #D7DEE7;
+			}
+			"""
+			for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
+				btn.setStyleSheet(large_btn_style)
 
-		bottom_layout = QVBoxLayout(bottom_controls)
-		bottom_layout.setContentsMargins(16, 16, 16, 16)
-		bottom_layout.setSpacing(7)
+			seg_row = QHBoxLayout()
+			seg_row.setSpacing(10)
+			seg_row.addWidget(seg_widget, 1)
+			self.btn_save_connectivity = QPushButton("Simpan")
+			self.btn_save_connectivity.setObjectName("constraintSaveButton")
+			self.btn_save_connectivity.setMinimumSize(118, 46)
+			self.btn_save_connectivity.setCursor(Qt.CursorShape.PointingHandCursor)
+			seg_row.addWidget(self.btn_save_connectivity)
+			bottom_layout.addLayout(seg_row)
 
-		model_label = QLabel("CONNECTIVITY MODEL")
-		model_label.setStyleSheet("font-size: 7.5pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.2px;")
-		bottom_layout.addWidget(model_label)
+			self.btn_5p.clicked.connect(lambda: self._set_connectivity_draft(5))
+			self.btn_9p.clicked.connect(lambda: self._set_connectivity_draft(9))
+			self.btn_11p.clicked.connect(lambda: self._set_connectivity_draft(11))
+			self.btn_save_connectivity.clicked.connect(self._save_connectivity)
 
-		# Segmented buttons layout — rounded pill container (matches Well Placement style)
-		seg_widget = QWidget()
-		seg_widget.setObjectName("segContainer")
-		seg_widget.setStyleSheet(
-			"QWidget#segContainer { background-color: #F1F4F8; border-radius: 10px; }"
-		)
-		seg_layout = QHBoxLayout(seg_widget)
-		seg_layout.setContentsMargins(3, 3, 3, 3)
-		seg_layout.setSpacing(2)
-
-		self.btn_5p = QPushButton("5 Points")
-		self.btn_9p = QPushButton("9 Points")
-		self.btn_11p = QPushButton("11 Points")
-		for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
-			btn.setCheckable(True)
-			btn.setCursor(Qt.CursorShape.PointingHandCursor)
-			seg_layout.addWidget(btn)
-
-		self.btn_group = QButtonGroup(self)
-		self.btn_group.addButton(self.btn_5p)
-		self.btn_group.addButton(self.btn_9p)
-		self.btn_group.addButton(self.btn_11p)
-		self.btn_group.setExclusive(True)
-		self.btn_5p.setChecked(True)
-
-		large_btn_style = """
-		QPushButton {
-			background-color: transparent;
-			color: #5B6676;
-			border: 1px solid transparent;
-			border-radius: 8px;
-			padding: 9px 22px;
-			font-size: 9.5pt;
-			font-weight: 700;
-			min-height: 32px;
-		}
-		QPushButton:hover {
-			background-color: #D7DEE7;
-			color: #1F2937;
-		}
-		QPushButton:checked {
-			background-color: #ffffff;
-			color: #1F2937;
-			font-weight: 700;
-			border: 1px solid #D7DEE7;
-		}
-		"""
-		for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
-			btn.setStyleSheet(large_btn_style)
-
-		bottom_layout.addWidget(seg_widget)
-		right_layout.addWidget(bottom_controls)
+			right_layout.addWidget(bottom_controls)
 
 		self.splitter.addWidget(left_panel)
 		self.splitter.addWidget(self.right_panel)
 		
 		# Set initial sizes
-		self.splitter.setStyleSheet("QSplitter::handle { background-color: #D7DEE7; height: 1px; width: 1px; }")
-		self.splitter.setStretchFactor(0, 3)
-		self.splitter.setStretchFactor(1, 2)
-		self.splitter.setSizes([620, 380])
+		self.splitter.setStretchFactor(0, 1)
+		self.splitter.setStretchFactor(1, 1)
+		self.splitter.setSizes([500, 500])
 
 		root.addWidget(self.splitter, stretch=1)
 
@@ -931,6 +984,10 @@ class Connectivity3DPage(QWidget):
 	def _on_focus_toggle(self) -> None:
 		self._conn3d.set_focus_mode(self.btn_focus.isChecked())
 
+	def set_run_result(self, run_result: RunResult | None) -> None:
+		self._run_result = run_result
+		self._refresh_view()
+
 	def _animate_card(self, widget: QWidget, delay_ms: int) -> None:
 		from PySide6.QtWidgets import QGraphicsOpacityEffect
 		from PySide6.QtCore import QTimer, QPropertyAnimation, QEasingCurve, QVariantAnimation
@@ -975,13 +1032,44 @@ class Connectivity3DPage(QWidget):
 		self.project_config = project_config
 		self._conn_cache: list = []
 		self._conn_cache_spec: tuple | None = None
+		try:
+			self._grid_model = build_grid(project_config)
+			update_grid_transmissibility(self._grid_model)
+		except Exception:
+			self._grid_model = None
 
 		gs = project_config.grid_spec
 		self._conn3d._nx = gs.nx
 		self._conn3d._ny = gs.ny
 		self._conn3d._nz = getattr(gs, "nz", 1)
 
+		if self._show_bottom_controls:
+			connectivity = getattr(gs, "connectivity", 5)
+			self._connectivity_draft = connectivity
+			{5: self.btn_5p, 9: self.btn_9p, 11: self.btn_11p}.get(connectivity, self.btn_5p).setChecked(True)
+			self._refresh_connectivity_chip()
+
 		self._refresh_view()
+
+	def _set_connectivity_draft(self, points: int) -> None:
+		self._connectivity_draft = points
+		self._refresh_connectivity_chip()
+
+	def _save_connectivity(self) -> None:
+		self.connectivityChanged.emit(self._connectivity_draft)
+
+	def _refresh_connectivity_chip(self) -> None:
+		saved = getattr(self.project_config.grid_spec, "connectivity", 5) if self.project_config else 5
+		confirmed = bool(self.project_config and self.project_config.constraints.grid_confirmed)
+		if confirmed:
+			self._connectivity_status_chip.setText(f"Aktif untuk Run: {saved}-Point")
+			self._connectivity_status_chip.setProperty("chipKind", "ok")
+		else:
+			self._connectivity_status_chip.setText("Belum Disimpan")
+			self._connectivity_status_chip.setProperty("chipKind", "empty")
+		self._connectivity_status_chip.style().unpolish(self._connectivity_status_chip)
+		self._connectivity_status_chip.style().polish(self._connectivity_status_chip)
+		self.btn_save_connectivity.setEnabled((not confirmed) or self._connectivity_draft != saved)
 
 	def _fast_neighbors(self, cell3d: int, nx: int, ny: int, nz: int) -> set[int]:
 		"""O(1) Cartesian neighbor lookup — no grid build needed."""
@@ -1076,53 +1164,23 @@ class Connectivity3DPage(QWidget):
 
 		if self._selected_cell is None:
 			# Placeholder when no cell selected
-			ph_outer = QWidget()
-			ph_outer.setStyleSheet("background: transparent;")
-			ph_outer_lay = QVBoxLayout(ph_outer)
-			ph_outer_lay.setContentsMargins(12, 40, 12, 40)
-			ph_outer_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-			ph_w = QWidget()
-			ph_w.setObjectName("placeholderCard")
-			ph_w.setStyleSheet("""
-				QWidget#placeholderCard {
-					background-color: #ffffff;
-					border: 2px dashed #D7DEE7;
-					border-radius: 12px;
-				}
-			""")
-			ph_w.setFixedWidth(280)
-			ph_lay = QVBoxLayout(ph_w)
-			ph_lay.setContentsMargins(20, 28, 20, 28)
-			ph_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_lay.setSpacing(14)
-
-			ph_icon = QLabel("🔌")
-			ph_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_icon.setStyleSheet("font-size: 26pt; background: transparent;")
-			ph_lay.addWidget(ph_icon)
-
-			ph_title = QLabel("Koneksi Sel Grid")
-			ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_title.setStyleSheet(
-				"font-size: 11pt; font-weight: 700; color: #0F5C8E; background: transparent;"
-			)
-			ph_lay.addWidget(ph_title)
-
-			ph_sub = QLabel(
+			ph_text = (
 				"Pilih sel pada model 3D di sebelah kiri untuk melihat detail koneksi antarsel."
+				if self._detail_mode == "connections"
+				else "Pilih sel pada model 3D di sebelah kiri untuk melihat net flux, accumulation, pore volume, PVT, dan residual cell tersebut."
 			)
-			ph_sub.setWordWrap(True)
-			ph_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_sub.setStyleSheet("font-size: 8.5pt; color: #5B6676; background: transparent; line-height: 1.4;")
-			ph_lay.addWidget(ph_sub)
-
-			ph_outer_lay.addWidget(ph_w)
-			self.scroll_layout.insertWidget(0, ph_outer)
-			self._animate_card(ph_outer, 0)
+			ph = QLabel(ph_text)
+			ph.setWordWrap(True)
+			ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+			ph.setStyleSheet(
+				"color: #5B6676; font-size: 10pt; font-style: italic; padding: 40px;"
+			)
+			self.scroll_layout.insertWidget(0, ph)
 		else:
 			# ── Build connection cards ──
-			if use_fast:
+			if self._detail_mode != "connections":
+				self._build_selected_cell_diagnostics()
+			elif use_fast:
 				# Compute cards inline from geometry — no full grid needed
 				self._build_fast_cards(connected_set, gs, nx)
 			else:
@@ -1221,3 +1279,381 @@ class Connectivity3DPage(QWidget):
 		card_layout.addWidget(prop_grid)
 		wrapper_lay.addWidget(card)
 		return wrapper
+
+	def _make_detail_card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+		card = QFrame()
+		card.setObjectName("connectionCard")
+		card.setStyleSheet("""
+			QFrame#connectionCard {
+				background-color: #ffffff;
+				border: 1.5px solid #D7DEE7;
+				border-radius: 8px;
+			}
+		""")
+		card_layout = QVBoxLayout(card)
+		card_layout.setContentsMargins(12, 12, 12, 12)
+		card_layout.setSpacing(8)
+		title_label = QLabel(title)
+		title_label.setStyleSheet("font-size: 9.5pt; font-weight: 700; color: #0F5C8E;")
+		card_layout.addWidget(title_label)
+		return card, card_layout
+
+	def _make_diag_section(self, title: str, subtitle: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+		card = QFrame()
+		card.setObjectName("diagnosticSectionCard")
+		card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+		layout = QVBoxLayout(card)
+		layout.setContentsMargins(14, 14, 14, 14)
+		layout.setSpacing(10)
+		title_label = QLabel(title)
+		title_label.setObjectName("diagnosticSectionTitle")
+		layout.addWidget(title_label)
+		if subtitle:
+			subtitle_label = QLabel(subtitle)
+			subtitle_label.setObjectName("diagnosticSubtleText")
+			subtitle_label.setWordWrap(True)
+			layout.addWidget(subtitle_label)
+		return card, layout
+
+	def _make_stat_chip(self, label: str, value: str, *, tone: str = "neutral") -> QFrame:
+		chip = QFrame()
+		chip.setObjectName("diagnosticStatChip")
+		chip.setProperty("tone", tone)
+		chip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+		lay = QVBoxLayout(chip)
+		lay.setContentsMargins(10, 9, 10, 9)
+		lay.setSpacing(2)
+		label_widget = QLabel(label)
+		label_widget.setObjectName("diagnosticStatLabel")
+		value_widget = QLabel(value)
+		value_widget.setObjectName("diagnosticStatValue")
+		value_widget.setWordWrap(True)
+		lay.addWidget(label_widget)
+		lay.addWidget(value_widget)
+		return chip
+
+	def _add_detail_rows(self, parent_layout: QVBoxLayout, rows: list[tuple[str, str]]) -> None:
+		grid = QGridLayout()
+		grid.setContentsMargins(0, 0, 0, 0)
+		grid.setHorizontalSpacing(14)
+		grid.setVerticalSpacing(7)
+		for row, (key, value) in enumerate(rows):
+			k_lbl = QLabel(key)
+			k_lbl.setObjectName("diagnosticMetricKey")
+			v_lbl = QLabel(value)
+			v_lbl.setObjectName("diagnosticMetricValue")
+			v_lbl.setWordWrap(True)
+			grid.addWidget(k_lbl, row, 0)
+			grid.addWidget(v_lbl, row, 1)
+		parent_layout.addLayout(grid)
+
+	def _add_metric_group(self, parent_layout: QVBoxLayout, title: str, rows: list[tuple[str, str]]) -> None:
+		group = QFrame()
+		group.setObjectName("diagnosticMetricGroup")
+		group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+		group_layout = QVBoxLayout(group)
+		group_layout.setContentsMargins(12, 12, 12, 12)
+		group_layout.setSpacing(10)
+		title_label = QLabel(title)
+		title_label.setObjectName("diagnosticBlockTitle")
+		group_layout.addWidget(title_label)
+		self._add_detail_rows(group_layout, rows)
+		parent_layout.addWidget(group)
+
+	def _make_balance_table(
+		self,
+		rows: list[tuple[str, float, float, float]],
+	) -> QFrame:
+		card = QFrame()
+		card.setObjectName("diagnosticBalanceTable")
+		card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+		layout = QVBoxLayout(card)
+		layout.setContentsMargins(0, 0, 0, 0)
+		layout.setSpacing(0)
+
+		header = QWidget()
+		header.setObjectName("diagnosticBalanceHeader")
+		head_lay = QGridLayout(header)
+		head_lay.setContentsMargins(12, 10, 12, 10)
+		head_lay.setHorizontalSpacing(12)
+		head_lay.setVerticalSpacing(0)
+		for col, title in enumerate(("Phase", "Net Flux", "Accumulation", "Residual")):
+			lbl = QLabel(title)
+			lbl.setObjectName("diagnosticBalanceHeaderLabel")
+			lbl.setAlignment(Qt.AlignmentFlag.AlignLeft if col == 0 else Qt.AlignmentFlag.AlignRight)
+			head_lay.addWidget(lbl, 0, col)
+			head_lay.setColumnStretch(col, 3 if col else 2)
+		layout.addWidget(header)
+
+		for idx, (phase, net_flux, accumulation, residual) in enumerate(rows):
+			row = QWidget()
+			row.setObjectName("diagnosticBalanceRow")
+			row.setProperty("phase", phase.lower())
+			row.setProperty("total", phase.lower() == "total")
+			row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+			row_lay = QGridLayout(row)
+			row_lay.setContentsMargins(12, 9, 12, 9)
+			row_lay.setHorizontalSpacing(12)
+			row_lay.setVerticalSpacing(0)
+			row_lay.setColumnStretch(0, 2)
+			for col in (1, 2, 3):
+				row_lay.setColumnStretch(col, 3)
+
+			phase_lbl = QLabel(phase)
+			phase_lbl.setObjectName("diagnosticBalancePhase")
+			row_lay.addWidget(phase_lbl, 0, 0)
+
+			for col, value in enumerate((net_flux, accumulation, residual), 1):
+				val_lbl = QLabel(self._format_num(value, 6))
+				val_lbl.setObjectName("diagnosticBalanceValue")
+				val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+				row_lay.addWidget(val_lbl, 0, col)
+
+			layout.addWidget(row)
+			if idx < len(rows) - 1:
+				sep = QFrame()
+				sep.setObjectName("diagnosticBalanceSeparator")
+				sep.setFrameShape(QFrame.Shape.HLine)
+				layout.addWidget(sep)
+
+		return card
+
+	def _make_phase_balance_card(
+		self,
+		phase: str,
+		net_flux: float,
+		accumulation: float,
+		residual: float,
+	) -> QFrame:
+		card = QFrame()
+		card.setObjectName("diagnosticPhaseBalanceCard")
+		card.setProperty("phase", phase.lower())
+		layout = QVBoxLayout(card)
+		layout.setContentsMargins(12, 10, 12, 10)
+		layout.setSpacing(8)
+
+		title = QLabel(phase)
+		title.setObjectName("diagnosticPhaseTitle")
+		layout.addWidget(title)
+
+		self._add_detail_rows(layout, [
+			("Net Flux", self._format_num(net_flux, 6)),
+			("Accumulation", self._format_num(accumulation, 6)),
+			("Residual", self._format_num(residual, 6)),
+		])
+		return card
+
+	def _make_phase_matrix(self, rows: list[tuple[str, tuple[float, float, float, float]]]) -> QWidget:
+		w = QWidget()
+		grid = QGridLayout(w)
+		grid.setContentsMargins(0, 0, 0, 0)
+		grid.setHorizontalSpacing(8)
+		grid.setVerticalSpacing(8)
+		corner = QLabel("Metric")
+		corner.setObjectName("diagnosticMatrixCorner")
+		grid.addWidget(corner, 0, 0)
+		for col, phase in enumerate(("Oil", "Water", "Gas", "Total"), 1):
+			h = QLabel(phase)
+			h.setObjectName("diagnosticMatrixHeader")
+			h.setAlignment(Qt.AlignmentFlag.AlignCenter)
+			grid.addWidget(h, 0, col)
+		for row_idx, (label, values) in enumerate(rows, 1):
+			row_label = QLabel(label)
+			row_label.setObjectName("diagnosticMatrixRowLabel")
+			grid.addWidget(row_label, row_idx, 0)
+			for col_idx, value in enumerate(values, 1):
+				cell = QLabel(self._format_num(value, 6))
+				cell.setObjectName("diagnosticMatrixValue")
+				cell.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+				grid.addWidget(cell, row_idx, col_idx)
+		return w
+
+	def _add_metric_grid(self, parent_layout: QVBoxLayout, rows: list[tuple[str, str]]) -> None:
+		grid = QGridLayout()
+		grid.setContentsMargins(0, 0, 0, 0)
+		grid.setHorizontalSpacing(10)
+		grid.setVerticalSpacing(6)
+		k_style = "font-size: 8.5pt; font-weight: 700; color: #5B6676;"
+		v_style = "font-size: 9pt; font-weight: 700; color: #1F2937;"
+		for row, (key, value) in enumerate(rows):
+			k_lbl = QLabel(key)
+			k_lbl.setStyleSheet(k_style)
+			v_lbl = QLabel(value)
+			v_lbl.setStyleSheet(v_style)
+			v_lbl.setWordWrap(True)
+			grid.addWidget(k_lbl, row, 0)
+			grid.addWidget(v_lbl, row, 1)
+		parent_layout.addLayout(grid)
+
+	def _format_num(self, value: float, digits: int = 4) -> str:
+		return f"{value:,.{digits}f}"
+
+	def _get_reference_state(self) -> ReservoirState | None:
+		if self.project_config is None or self._grid_model is None:
+			return None
+		return initialize_state(self.project_config, self._grid_model)
+
+	def _get_selected_step_pair(self) -> tuple[ReservoirState | None, ReservoirState | None, TimeStepResult | None, float, str]:
+		if self.project_config is None:
+			return None, None, None, 1.0, "Konfigurasi project belum tersedia."
+		base_state = self._get_reference_state()
+		if self._run_result is None or not self._run_result.steps:
+			return base_state, base_state, None, 1.0, "Belum ada hasil run; menampilkan state awal proyek."
+		current_step = self._run_result.steps[-1]
+		current_state = ReservoirState(
+			pressure=list(current_step.pressure),
+			sw=list(current_step.sw),
+			sg=list(current_step.sg),
+		)
+		if len(self._run_result.steps) >= 2:
+			previous_step = self._run_result.steps[-2]
+			previous_state = ReservoirState(
+				pressure=list(previous_step.pressure),
+				sw=list(previous_step.sw),
+				sg=list(previous_step.sg),
+			)
+		else:
+			previous_state = base_state
+		dt_days = 1.0
+		if current_step.attempts:
+			dt_days = max(current_step.attempts[-1].dt_days, 1e-12)
+		elif current_step.summary.time_days > 0.0:
+			dt_days = current_step.summary.time_days
+		return previous_state, current_state, current_step, dt_days, "Data diambil dari timestep terakhir hasil run."
+
+	def _build_selected_cell_diagnostics(self) -> None:
+		if self.project_config is None or self._selected_cell is None:
+			return
+		previous_state, current_state, step_result, dt_days, source_note = self._get_selected_step_pair()
+		if current_state is None or previous_state is None:
+			return
+		gs = self.project_config.grid_spec
+		nx, ny, nz = gs.nx, gs.ny, getattr(gs, "nz", 1)
+		plane = max(nx * ny, 1)
+		cell_idx0 = self._selected_cell - 1
+		if cell_idx0 < 0:
+			return
+		ix = cell_idx0 % nx
+		iy = (cell_idx0 % plane) // nx
+		iz = cell_idx0 // plane
+
+		curr_props = evaluate_cell_properties(
+			self.project_config,
+			current_state.pressure[cell_idx0],
+			current_state.sw[cell_idx0],
+			current_state.sg[cell_idx0],
+		)
+		prev_props = evaluate_cell_properties(
+			self.project_config,
+			previous_state.pressure[cell_idx0],
+			previous_state.sw[cell_idx0],
+			previous_state.sg[cell_idx0],
+		)
+
+		phase_flux = {"oil": [], "water": [], "gas": []}
+		phase_net_flux = {"oil": [], "water": [], "gas": []}
+		accumulation = {"oil": [], "water": [], "gas": [], "total": []}
+		if self._grid_model is not None:
+			phase_flux = compute_phase_connection_fluxes(
+				self._grid_model,
+				current_state,
+				reference_data=self.project_config.reference_data,
+				pvt_tables=self.project_config.pvt_tables,
+				rock_tables=self.project_config.rock_tables,
+			)
+			phase_net_flux = compute_phase_net_flux_per_cell(self._grid_model, phase_flux)
+			accumulation = assemble_accumulation_terms(
+				self._grid_model,
+				previous_state,
+				current_state,
+				self.project_config.reference_data,
+				self.project_config.pvt_tables,
+				dt_days,
+			)
+
+		net_flux_o = phase_net_flux["oil"][cell_idx0] if cell_idx0 < len(phase_net_flux["oil"]) else 0.0
+		net_flux_w = phase_net_flux["water"][cell_idx0] if cell_idx0 < len(phase_net_flux["water"]) else 0.0
+		net_flux_g = phase_net_flux["gas"][cell_idx0] if cell_idx0 < len(phase_net_flux["gas"]) else 0.0
+		net_flux_t = net_flux_o + net_flux_w + net_flux_g
+
+		acc_o = accumulation["oil"][cell_idx0] if cell_idx0 < len(accumulation["oil"]) else 0.0
+		acc_w = accumulation["water"][cell_idx0] if cell_idx0 < len(accumulation["water"]) else 0.0
+		acc_g = accumulation["gas"][cell_idx0] if cell_idx0 < len(accumulation["gas"]) else 0.0
+		acc_t = accumulation["total"][cell_idx0] if cell_idx0 < len(accumulation["total"]) else (acc_o + acc_w + acc_g)
+
+		residual_total = net_flux_t - acc_t
+		residual_oil = net_flux_o - acc_o
+		residual_water = net_flux_w - acc_w
+		residual_gas = net_flux_g - acc_g
+
+		pv_k = 0.0
+		pv_n = 0.0
+		if self._grid_model is not None and cell_idx0 < len(self._grid_model.cells):
+			cell = self._grid_model.cells[cell_idx0]
+			pv_k = compute_effective_pore_volume(cell, current_state.pressure[cell_idx0], self.project_config.reference_data)
+			pv_n = compute_effective_pore_volume(cell, previous_state.pressure[cell_idx0], self.project_config.reference_data)
+
+		xy_cell_id = (cell_idx0 % plane) + 1
+		cell_wells = [w for w in self.project_config.wells if w.cell_id == xy_cell_id]
+		source_sink = 0.0
+		if cell_wells:
+			for well in cell_wells:
+				sign = -1.0 if well.well_type == "production" else 1.0
+				source_sink += sign * well.flowrate
+		residual_with_q = residual_total - source_sink
+
+		cards: list[QWidget] = []
+
+		overview_card, overview_lay = self._make_diag_section(
+			f"Cell {self._selected_cell} ({ix}, {iy}, {iz})",
+			None,
+		)
+		status_lbl = QLabel(source_note)
+		status_lbl.setObjectName("diagnosticSubtleText")
+		status_lbl.setWordWrap(True)
+		overview_lay.addWidget(status_lbl)
+		pressure_card = self._make_stat_chip("Pressure", f"{self._format_num(curr_props['pressure_psia'], 2)} psia", tone="primary")
+		overview_lay.addWidget(pressure_card)
+		sat_card = self._make_stat_chip(
+			"Saturations",
+			f"Sw {self._format_num(curr_props['sw'], 3)}   |   Sg {self._format_num(curr_props['sg'], 3)}   |   So {self._format_num(curr_props['so'], 3)}",
+		)
+		overview_lay.addWidget(sat_card)
+		self._add_detail_rows(overview_lay, [
+			("Previous pressure", f"{self._format_num(prev_props['pressure_psia'], 2)} psia"),
+			("Timestep", f"{self._format_num(dt_days, 4)} hari"),
+			("Newton iterations", str(step_result.summary.newton_iterations if step_result else 0)),
+		])
+		cards.append(overview_card)
+
+		balance_card, balance_lay = self._make_diag_section(
+			"Flow Balance",
+			None,
+		)
+		for phase, net_flux, accumulation, residual in [
+			("Oil", net_flux_o, acc_o, residual_oil),
+			("Water", net_flux_w, acc_w, residual_water),
+			("Gas", net_flux_g, acc_g, residual_gas),
+			("Total", net_flux_t, acc_t, residual_total),
+		]:
+			balance_lay.addWidget(self._make_phase_balance_card(phase, net_flux, accumulation, residual))
+		cards.append(balance_card)
+
+		state_card, state_lay = self._make_diag_section("Reservoir State")
+		self._add_metric_group(state_lay, "Pore Volume", [
+			("Current", self._format_num(pv_k, 4)),
+			("Previous", self._format_num(pv_n, 4)),
+			("Delta", self._format_num(pv_k - pv_n, 4)),
+			("Rock compressibility", self._format_num(self.project_config.reference_data.rock_compressibility, 8)),
+		])
+		self._add_metric_group(state_lay, "PVT and Relperm", [
+			("Bo / Bw / Bg", f"{self._format_num(curr_props['bo'], 4)} / {self._format_num(curr_props['bw'], 4)} / {self._format_num(curr_props['bg'], 6)}"),
+			("mu_o / mu_w / mu_g", f"{self._format_num(curr_props['mu_o'], 4)} / {self._format_num(curr_props['mu_w'], 4)} / {self._format_num(curr_props['mu_g'], 4)}"),
+			("kro / krw / krg", f"{self._format_num(curr_props['kro'], 4)} / {self._format_num(curr_props['krw'], 4)} / {self._format_num(curr_props['krg'], 4)}"),
+			("Pcow / Pcgw", f"{self._format_num(curr_props['pcow'], 4)} / {self._format_num(curr_props['pcgw'], 4)}"),
+		])
+		cards.append(state_card)
+
+		for idx, card in enumerate(cards):
+			self.scroll_layout.insertWidget(idx, card)
+			self._animate_card(card, idx * 60)

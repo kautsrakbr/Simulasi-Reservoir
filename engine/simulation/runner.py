@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Callable, TypedDict
 
 # Called once per Newton iteration (across every timestep/retry attempt) with
@@ -14,9 +15,10 @@ from engine.domain.state import ReservoirState
 from engine.grid.builder import build_grid
 from engine.numerics.jacobian_fd import assemble_jacobian_fd
 from engine.physics.accumulation import assemble_accumulation_terms
-from engine.physics.flux import compute_phase_connection_fluxes, compute_phase_net_flux_per_cell
+from engine.physics.flux import compute_phase_connection_fluxes, compute_phase_net_flux_per_cell, evaluate_cell_properties
 from engine.physics.residual import assemble_full_residual, residual_max_abs
 from engine.physics.transmissibility import update_grid_transmissibility
+from engine.physics.wells import assemble_well_terms
 from engine.reporting.result_builder import build_run_result, build_step_result
 from engine.simulation.initializer import initialize_state
 from engine.simulation.newton import newton_step
@@ -104,13 +106,28 @@ def _compute_step_diagnostics(
 		dt_days,
 	)
 	accumulation_total = accumulation_terms["total"]
-	oil_residual_per_cell = assemble_full_residual(phase_flux["oil"], accumulation_terms["oil"])
+
+	cell_properties = [
+		evaluate_cell_properties(
+			index,
+			current_state,
+			project_config.reference_data,
+			project_config.pvt_tables,
+			project_config.rock_tables,
+		)
+		for index in range(len(grid_model.cells))
+	]
+	well_terms = assemble_well_terms(project_config.wells, cell_properties, grid_model, current_state.pressure)
+	well_term_total = [oil + gas for oil, gas in zip(well_terms["oil"], well_terms["gas"])]
+
+	oil_residual_per_cell = assemble_full_residual(phase_flux["oil"], accumulation_terms["oil"], well_terms["oil"])
+	# Water has no well term here -- docs/rumuspenting.md §5 only subtracts qo and qg ("qo dan qg hanya ada di cell sumur").
 	water_residual_per_cell = assemble_full_residual(phase_flux["water"], accumulation_terms["water"])
-	gas_residual_per_cell = assemble_full_residual(phase_flux["gas"], accumulation_terms["gas"])
+	gas_residual_per_cell = assemble_full_residual(phase_flux["gas"], accumulation_terms["gas"], well_terms["gas"])
 	max_oil_residual = residual_max_abs(oil_residual_per_cell)
 	max_water_residual = residual_max_abs(water_residual_per_cell)
 	max_gas_residual = residual_max_abs(gas_residual_per_cell)
-	residual_per_cell = assemble_full_residual(net_flux, accumulation_total)
+	residual_per_cell = assemble_full_residual(net_flux, accumulation_total, well_term_total)
 	residual_vector = oil_residual_per_cell + water_residual_per_cell + gas_residual_per_cell
 	max_residual = residual_max_abs(residual_per_cell)
 	max_residual_vector = residual_max_abs(residual_vector)
@@ -179,6 +196,7 @@ def run_simulation(
 	project_config: ProjectConfig,
 	on_iteration: IterationCallback | None = None,
 ) -> RunResult:
+	run_started_at = time.perf_counter()
 	grid_model = build_grid(project_config)
 	committed_state = initialize_state(project_config, grid_model)
 	update_grid_transmissibility(grid_model)
@@ -253,13 +271,19 @@ def run_simulation(
 					case_name=project_config.run.case_name,
 					steps=steps,
 					warnings=warnings,
+					total_elapsed_seconds=time.perf_counter() - run_started_at,
 				)
 			trial_dt = min(reduced_dt, remaining_time)
 
 		if not accepted:
 			break
 
-	return build_run_result(case_name=project_config.run.case_name, steps=steps, warnings=warnings)
+	return build_run_result(
+		case_name=project_config.run.case_name,
+		steps=steps,
+		warnings=warnings,
+		total_elapsed_seconds=time.perf_counter() - run_started_at,
+	)
 
 
 def run_timestep(
@@ -276,12 +300,20 @@ def run_timestep(
 	# Newton stops as soon as the max normalised residual drops to/below this tolerance
 	# (configured via "Residual Tolerance" in Model & Solver); otherwise it keeps iterating.
 	residual_target = project_config.solver.residual_tolerance
+	# active_method "newton_raphson" always recomputes the Jacobian every iteration.
+	# "quasi_newton" reuses it for jacobian_refresh_interval-1 extra iterations before
+	# recomputing, trading convergence speed for cheaper iterations.
+	if project_config.methods.active_method == "newton_raphson":
+		jacobian_refresh_interval = 1
+	else:
+		jacobian_refresh_interval = max(1, project_config.solver.jacobian_refresh_interval)
 
 	final_diagnostics: _StepDiagnostics | None = None
 	used_iterations = 0
 	converged = False
 
 	last_jacobian: list[list[float]] = []
+	iterations_since_refresh = 0
 	corrections_history: list[list[float]] = []
 
 	for iteration in range(1, max_iterations + 1):
@@ -314,15 +346,19 @@ def run_timestep(
 
 		try:
 			residual_vector = list(final_diagnostics["residual_vector"])
-			jacobian = assemble_jacobian_fd(
-				working_state,
-				_residual_evaluator,
-				pressure_delta=1e-6,
-				sw_delta=1e-6,
-				sg_delta=1e-6,
-				unknown_layout="pressure_sw_sg",
-			)
-			last_jacobian = jacobian
+			needs_fresh_jacobian = (not last_jacobian) or iterations_since_refresh >= jacobian_refresh_interval
+			if needs_fresh_jacobian:
+				last_jacobian = assemble_jacobian_fd(
+					working_state,
+					_residual_evaluator,
+					pressure_delta=1e-6,
+					sw_delta=1e-6,
+					sg_delta=1e-6,
+					unknown_layout="pressure_sw_sg",
+				)
+				iterations_since_refresh = 0
+			jacobian = last_jacobian
+			iterations_since_refresh += 1
 			working_state, correction = newton_step(
 				working_state,
 				residual_vector,

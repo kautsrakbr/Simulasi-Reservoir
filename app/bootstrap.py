@@ -10,8 +10,8 @@ from windows.main_window import MainWindow
 
 def create_application(argv: Sequence[str] | None = None) -> QApplication:
 	app = QApplication(list(argv) if argv is not None else sys.argv)
-	app.setApplicationName("CoreReservoir")
-	app.setOrganizationName("CoreReservoir")
+	app.setApplicationName("CERITANYA INI SIMULATOR")
+	app.setOrganizationName("CERITANYA INI SIMULATOR")
 	# Force the cross-platform Fusion style so QSS color/border/radius rules
 	# are fully respected — the native Windows style (windowsvista) ignores
 	# most QSS properties on standard widgets (buttons, tabs, headers,

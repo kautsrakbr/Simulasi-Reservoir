@@ -27,6 +27,7 @@ class SolverConfig:
 	max_step_retries: int = 8
 	max_newton_iterations: int = 20
 	residual_tolerance: float = 1e-5
+	jacobian_refresh_interval: int = 1    # 1 = recompute Jacobian every iteration; N>1 = reuse it for N-1 extra iterations before recomputing
 	parameter_tolerance_pressure: float = 1e-3    # psi-scale Newton convergence floor for delta-P
 	parameter_tolerance_saturation: float = 1e-4  # fraction-scale Newton convergence floor for delta-S
 	residual_norm_floor: float = 0.1
@@ -37,7 +38,7 @@ class SolverConfig:
 
 @dataclass(slots=True)
 class RunConfig:
-	case_name: str = "CoreReservoir Base Case"
+	case_name: str = "CERITANYA INI SIMULATOR Base Case"
 	output_frequency: int = 1
 	save_reports: bool = True
 
@@ -68,13 +69,24 @@ class WellConfig:
 	name: str = ""
 	well_type: str = "production"        # "production" | "injection"
 	cell_id: int = 1                     # 1-indexed 2D cell (ix + iy*nx + 1)
-	well_model: str = "simple_flowrate"  # "simple_flowrate" | "peaceman" | "well_model_3"
-	flowrate: float = 100.0              # STB/day (positive for both; type determines sign)
+	well_model: str = "simple_flowrate"  # "simple_flowrate" | "peaceman"
+	flowrate: float = 100.0              # STB/day (positive for both; type determines sign) -- used when well_model == "simple_flowrate"
+	bhp: float = 500.0                   # psia, bottomhole flowing pressure -- used when well_model == "peaceman"
+	wellbore_radius: float = 0.5         # ft (rw) -- used when well_model == "peaceman"
+
+
+@dataclass(slots=True)
+class ConstraintStatus:
+	"""Tracks whether the user has explicitly saved each run-readiness constraint."""
+	grid_confirmed: bool = False
+	wells_confirmed: bool = False
+	perturbation_confirmed: bool = False
+	methods_confirmed: bool = False
 
 
 @dataclass(slots=True)
 class ProjectConfig:
-	name: str = "CoreReservoir"
+	name: str = "CERITANYA INI SIMULATOR"
 	description: str = ""
 	reference_data: ReferenceData = field(default_factory=ReferenceData)
 	solver: SolverConfig = field(default_factory=SolverConfig)
@@ -86,4 +98,5 @@ class ProjectConfig:
 	wells: list[WellConfig] = field(default_factory=list)
 	perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
 	methods: MethodConfig = field(default_factory=MethodConfig)
+	constraints: ConstraintStatus = field(default_factory=ConstraintStatus)
 	is_dirty: bool = False

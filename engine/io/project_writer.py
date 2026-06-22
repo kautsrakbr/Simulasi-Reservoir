@@ -39,6 +39,7 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 			"max_step_retries": project_config.solver.max_step_retries,
 			"max_newton_iterations": project_config.solver.max_newton_iterations,
 			"residual_tolerance": project_config.solver.residual_tolerance,
+			"jacobian_refresh_interval": project_config.solver.jacobian_refresh_interval,
 			"parameter_tolerance_pressure": project_config.solver.parameter_tolerance_pressure,
 			"parameter_tolerance_saturation": project_config.solver.parameter_tolerance_saturation,
 			"residual_norm_floor": project_config.solver.residual_norm_floor,
@@ -64,6 +65,13 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 			"dx": project_config.grid_spec.dx,
 			"dy": project_config.grid_spec.dy,
 			"dz": project_config.grid_spec.dz,
+			"connectivity": project_config.grid_spec.connectivity,
+		},
+		"constraints": {
+			"grid_confirmed": project_config.constraints.grid_confirmed,
+			"wells_confirmed": project_config.constraints.wells_confirmed,
+			"perturbation_confirmed": project_config.constraints.perturbation_confirmed,
+			"methods_confirmed": project_config.constraints.methods_confirmed,
 		},
 		"pvt_tables": _serialize_table(project_config.pvt_tables),
 		"rock_tables": _serialize_table(project_config.rock_tables),
@@ -83,6 +91,8 @@ def write_project(project_config: ProjectConfig) -> dict[str, object]:
 				"cell_id": w.cell_id,
 				"well_model": w.well_model,
 				"flowrate": w.flowrate,
+				"bhp": w.bhp,
+				"wellbore_radius": w.wellbore_radius,
 			}
 			for w in project_config.wells
 		],

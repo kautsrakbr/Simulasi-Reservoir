@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QComboBox,
 	QFrame,
+	QGraphicsOpacityEffect,
 	QGridLayout,
 	QHBoxLayout,
 	QHeaderView,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 	QSizePolicy,
 	QSpinBox,
 	QSplitter,
+	QStackedWidget,
 	QStyledItemDelegate,
 	QTabWidget,
 	QTableWidget,
@@ -28,7 +30,10 @@ from PySide6.QtWidgets import (
 
 from engine.domain.project import ProjectConfig
 from engine.domain.results import RunResult, TimeStepResult
+from engine.grid.builder import build_grid
+from engine.physics.transmissibility import update_grid_transmissibility
 from modules.results_service import get_run_summary, get_all_cell_properties
+from windows.connectivity_3d_page import Connectivity3DPage, _Connectivity3DWidget
 
 
 # ── Colormap Helper ───────────────────────────────────────────────────────────
@@ -275,6 +280,58 @@ def _symmetric_cells(n: int, well: int, nx: int, ny: int) -> list[int]:
 	return sorted(result)
 
 
+_SYMMETRY_TRANSFORM_CODES = (
+	"same",
+	"flip_r",
+	"flip_c",
+	"flip_rc",
+	"swap",
+	"swap_flip_r",
+	"swap_flip_c",
+	"swap_flip_rc",
+)
+
+
+def _transform_offset(dr: int, dc: int, code: str) -> tuple[int, int]:
+	if code == "same":
+		return dr, dc
+	if code == "flip_r":
+		return -dr, dc
+	if code == "flip_c":
+		return dr, -dc
+	if code == "flip_rc":
+		return -dr, -dc
+	if code == "swap":
+		return dc, dr
+	if code == "swap_flip_r":
+		return -dc, dr
+	if code == "swap_flip_c":
+		return dc, -dr
+	if code == "swap_flip_rc":
+		return -dc, -dr
+	raise ValueError(f"Unknown symmetry transform code: {code}")
+
+
+def _apply_symmetry_transform(cell: int, well: int, nx: int, ny: int, code: str) -> int | None:
+	row, col = divmod(cell - 1, nx)
+	well_row, well_col = divmod(well - 1, nx)
+	dr, dc = row - well_row, col - well_col
+	tr, tc = _transform_offset(dr, dc, code)
+	row2, col2 = well_row + tr, well_col + tc
+	if 0 <= row2 < ny and 0 <= col2 < nx:
+		return row2 * nx + col2 + 1
+	return None
+
+
+def _symmetry_transform_code_for_pair(n: int, s: int, well: int, nx: int, ny: int) -> str | None:
+	for code in _SYMMETRY_TRANSFORM_CODES:
+		mapped = _apply_symmetry_transform(n, well, nx, ny, code)
+		if mapped == s:
+			return code
+	return None
+
+
+
 def _residuals_close(v1: float, v2: float, rtol: float = 1e-4) -> bool:
 	denom = max(abs(v1), abs(v2), 1e-30)
 	return abs(v1 - v2) / denom < rtol
@@ -298,11 +355,11 @@ def _icon_badge(letter: str, color: str, size: int = 20) -> QLabel:
 
 
 def _title_row(title_label: QLabel, icon: str, color: str) -> QHBoxLayout:
-	"""Wrap an existing title QLabel with a leading icon badge."""
+	"""Wrap an existing title QLabel. Icons intentionally omitted for a cleaner validation UI."""
+	del icon, color
 	row = QHBoxLayout()
 	row.setContentsMargins(0, 0, 0, 0)
-	row.setSpacing(8)
-	row.addWidget(_icon_badge(icon, color))
+	row.setSpacing(0)
 	row.addWidget(title_label, 1)
 	return row
 
@@ -317,8 +374,7 @@ def _make_card(title: str, icon: str | None = None, color: str = "#0F5C8E") -> t
 	hdr_row = QHBoxLayout()
 	hdr_row.setContentsMargins(0, 0, 0, 0)
 	hdr_row.setSpacing(8)
-	if icon:
-		hdr_row.addWidget(_icon_badge(icon, color))
+	del icon, color
 	hdr = QLabel(title.upper())
 	hdr.setObjectName("resultCardTitle")
 	hdr_row.addWidget(hdr, 1)
@@ -354,8 +410,7 @@ def _make_stat_card(title: str, icon: str | None = None, color: str = "#0F5C8E")
 	title_row = QHBoxLayout()
 	title_row.setContentsMargins(0, 0, 0, 0)
 	title_row.setSpacing(6)
-	if icon:
-		title_row.addWidget(_icon_badge(icon, color, size=16))
+	del icon, color
 	title_lbl = QLabel(title)
 	title_lbl.setObjectName("resultStatTitle")
 	title_row.addWidget(title_lbl, 1)
@@ -504,6 +559,179 @@ class _NormChartWidget(QWidget):
 		painter.end()
 
 
+# ── Newton-Raphson Concept Diagram ────────────────────────────────────────────
+class _NewtonConceptDiagram(QWidget):
+	"""Illustrative 1D Newton-Raphson diagram: r(x) vs x, tangent lines, root
+	approach. Not driven by real run data — r(x) = 0.04*(x-1)^3 + 0.1*(x-1) is
+	a fixed convex curve picked purely so the tangent-line story is visible."""
+
+	_COLOR_CURVE  = QColor("#2E7DAE")
+	_COLOR_TANGENT = QColor("#D98C2B")
+	_COLOR_AXIS   = QColor("#8a8f9e")
+	_COLOR_POINT  = QColor("#B2413F")
+	_COLOR_BG     = QColor("#0e0f14")
+	_COLOR_PLOT   = QColor("#121319")
+	_COLOR_BORDER = QColor("#2d313f")
+	_X_ROOT = 1.0
+	_X0 = 5.0
+
+	def __init__(self, parent: QWidget | None = None) -> None:
+		super().__init__(parent)
+		self.setMinimumHeight(260)
+		self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+	@classmethod
+	def _r(cls, x: float) -> float:
+		dx = x - cls._X_ROOT
+		return 0.04 * dx ** 3 + 0.1 * dx
+
+	@classmethod
+	def _dr(cls, x: float) -> float:
+		dx = x - cls._X_ROOT
+		return 0.12 * dx ** 2 + 0.1
+
+	@classmethod
+	def _newton_step(cls, x: float) -> float:
+		return x - cls._r(x) / cls._dr(x)
+
+	def paintEvent(self, event) -> None:  # noqa: N802
+		painter = QPainter(self)
+		painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+		w, h = self.width(), self.height()
+		ml, mr, mt, mb = 50, 24, 20, 40
+		px0, px1 = ml, w - mr
+		py0, py1 = mt, h - mb
+		pw, ph = px1 - px0, py1 - py0
+
+		painter.fillRect(self.rect(), self._COLOR_BG)
+		painter.fillRect(px0, py0, pw, ph, self._COLOR_PLOT)
+		painter.setPen(QPen(self._COLOR_BORDER, 1))
+		painter.drawRect(px0, py0, pw, ph)
+
+		x_min, x_max = -0.4, self._X0 + 0.4
+		x0 = self._X0
+		x1 = self._newton_step(x0)
+		x2 = self._newton_step(x1)
+
+		samples = [x_min + (x_max - x_min) * i / 200 for i in range(201)]
+		r_values = [self._r(x) for x in samples]
+		y_min, y_max = min(r_values + [0.0]), max(r_values)
+		y_rng = max(y_max - y_min, 1e-6)
+		x_rng = max(x_max - x_min, 1e-6)
+
+		def to_pt(x: float, y: float) -> QPointF:
+			sx = px0 + (x - x_min) / x_rng * pw
+			sy = py1 - (y - y_min) / y_rng * ph
+			return QPointF(sx, sy)
+
+		# r = 0 axis
+		painter.setPen(QPen(self._COLOR_AXIS, 1, Qt.PenStyle.DashLine))
+		painter.drawLine(to_pt(x_min, 0.0), to_pt(x_max, 0.0))
+		painter.setPen(self._COLOR_AXIS)
+		painter.drawText(QRectF(px1 - 60, to_pt(x_max, 0.0).y() - 18, 56, 16), Qt.AlignmentFlag.AlignRight, "r = 0")
+
+		# curve r(x)
+		painter.setPen(QPen(self._COLOR_CURVE, 2.2))
+		for i in range(len(samples) - 1):
+			painter.drawLine(to_pt(samples[i], r_values[i]), to_pt(samples[i + 1], r_values[i + 1]))
+		painter.setPen(self._COLOR_CURVE)
+		painter.drawText(to_pt(x_min, r_values[0]) + QPointF(4, -6), "r(x)")
+
+		# tangent at x0 -> x1, and x1 -> x2
+		tangent_pen = QPen(self._COLOR_TANGENT, 1.6, Qt.PenStyle.DashLine)
+		for idx, (xa, xb) in enumerate(((x0, x1), (x1, x2))):
+			painter.setPen(tangent_pen)
+			painter.drawLine(to_pt(xa, self._r(xa)), to_pt(xb, 0.0))
+			mid = to_pt((xa + xb) / 2, self._r(xa) / 2)
+			painter.setPen(self._COLOR_TANGENT)
+			painter.drawText(mid + QPointF(-30, -8), f"∂r/∂x|k={idx}")
+
+		# points x0, x1, x2
+		labels = [("x(k=0)", x0, self._r(x0)), ("x(k=1)", x1, self._r(x1)), ("x(k+1)", x2, self._r(x2))]
+		for label, x, y in labels:
+			pt = to_pt(x, y)
+			painter.setBrush(QBrush(self._COLOR_POINT))
+			painter.setPen(QPen(QColor("#ffffff"), 1.2))
+			painter.drawEllipse(pt, 4.5, 4.5)
+			axis_pt = to_pt(x, 0.0)
+			painter.setPen(QPen(self._COLOR_AXIS, 1, Qt.PenStyle.DotLine))
+			painter.drawLine(pt, axis_pt)
+			painter.setPen(self._COLOR_AXIS)
+			painter.drawText(QRectF(axis_pt.x() - 30, py1 + 6, 60, 16), Qt.AlignmentFlag.AlignCenter, label)
+
+		font_ax = QFont()
+		font_ax.setPointSize(7)
+		font_ax.setItalic(True)
+		painter.setFont(font_ax)
+		painter.setPen(self._COLOR_AXIS)
+		painter.drawText(QRectF(px0, py1 + 22, pw, 14), Qt.AlignmentFlag.AlignCenter, "x (representasi p, Sw, atau Sg)")
+
+		painter.end()
+
+
+# ── Newton vs Quasi-Newton comparison card ────────────────────────────────────
+class _ComparisonCard(QFrame):
+	"""Mirrors methods_page._MethodCard's dim-when-inactive look, but driven
+	by whether a run result exists for this method rather than a selection."""
+
+	def __init__(self, title: str, parent: QWidget | None = None) -> None:
+		super().__init__(parent)
+		self.setObjectName("comparisonCard")
+		self._opacity = QGraphicsOpacityEffect(self)
+		self.setGraphicsEffect(self._opacity)
+
+		root = QVBoxLayout(self)
+		root.setContentsMargins(20, 18, 20, 18)
+		root.setSpacing(10)
+
+		title_row = QHBoxLayout()
+		self._title = QLabel(title)
+		self._title.setObjectName("methodCardTitle")
+		self._badge = QLabel("Belum di-Run")
+		self._badge.setObjectName("methodCardSummary")
+		title_row.addWidget(self._title)
+		title_row.addStretch()
+		title_row.addWidget(self._badge)
+		root.addLayout(title_row)
+
+		self._rows: dict[str, QLabel] = {}
+		for key, caption in (
+			("iterations", "Total Iterasi Newton"),
+			("elapsed", "CPU Time"),
+			("steps", "Jumlah Step"),
+			("converged", "Step Konvergen"),
+		):
+			row = QHBoxLayout()
+			cap = QLabel(caption)
+			cap.setObjectName("methodBodyText")
+			val = QLabel("—")
+			val.setObjectName("resultRowValue")
+			row.addWidget(cap)
+			row.addStretch()
+			row.addWidget(val)
+			root.addLayout(row)
+			self._rows[key] = val
+
+		root.addStretch(1)
+		self.set_result(None)
+
+	def set_result(self, run_result: RunResult | None) -> None:
+		has_result = run_result is not None
+		self._opacity.setOpacity(1.0 if has_result else 0.44)
+		self._badge.setText("Sudah di-Run" if has_result else "Belum di-Run")
+		if not has_result:
+			for label in self._rows.values():
+				label.setText("—")
+			return
+		total_iterations = sum(step.summary.newton_iterations for step in run_result.steps)
+		converged_count = sum(1 for step in run_result.steps if step.summary.converged)
+		self._rows["iterations"].setText(str(total_iterations))
+		self._rows["elapsed"].setText(f"{run_result.total_elapsed_seconds:.3f} s")
+		self._rows["steps"].setText(str(len(run_result.steps)))
+		self._rows["converged"].setText(f"{converged_count}/{len(run_result.steps)}")
+
+
 # ── Correction Chart Widget ───────────────────────────────────────────────────
 
 class _CorrectionChartWidget(QWidget):
@@ -624,6 +852,11 @@ class _CorrectionChartWidget(QWidget):
 
 _JACOBIAN_ZOOM_STEPS       = (0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.75, 1.00, 1.25, 1.50, 2.00, 2.50, 3.00, 4.00)
 _JACOBIAN_ZOOM_DEFAULT_IDX = 9
+_JAC_DIAG_COMPONENTS = (
+	("p", "Ro-p", 0, 0),
+	("sw", "Rw-Sw", 1, 1),
+	("sg", "Rg-Sg", 2, 2),
+)
 
 
 # ── Jacobian Canvas (zero-bug pure-QPainter renderer) ─────────────────────────
@@ -655,21 +888,27 @@ class _JacobianCanvas(QWidget):
 	_C_LO_TXT  = "#e6edf3"   # value text on dark cell
 	_C_HI_TXT  = "#0d1117"   # value text on bright cell
 
+	# Well row/column highlight — amber, matching the "well" color used elsewhere
+	# (e.g. the Connectivity/Jacobian 3D grid's well-cell marker).
+	_C_WELL = "#A86A15"
+
 	def __init__(self, parent: QWidget | None = None) -> None:
 		super().__init__(parent)
 		self._data:   list[list[float]] = []
 		self._nc      = 0      # number of cell groups (= n_cells)
 		self._zoom    = 1.0
 		self._maxabs  = 0.0
+		self._well_idx: int | None = None   # 0-indexed cell group with an active well
 
 	# ── public API ───────────────────────────────────────────────────────────
 
 	def set_data(self, data: list[list[float]], n_cells: int,
-	             zoom: float = 1.0) -> None:
+	             zoom: float = 1.0, well_cell: int | None = None) -> None:
 		self._data   = data
 		self._nc     = n_cells
 		self._zoom   = zoom
 		self._maxabs = max((abs(v) for row in data for v in row), default=0.0)
+		self._well_idx = (well_cell - 1) if well_cell else None
 		self.updateGeometry()
 		self.adjustSize()   # QScrollArea.setWidget() doesn't auto-apply sizeHint changes
 		self.update()
@@ -827,6 +1066,19 @@ class _JacobianCanvas(QWidget):
 		p.setPen(QPen(QColor(self._C_SEP), sw))
 		p.drawRect(0, 0, tw - 1, th - 1)
 
+		# ── Well row/column highlight ──────────────────────────────────────
+		if self._well_idx is not None and 0 <= self._well_idx < nc:
+			p.setBrush(Qt.BrushStyle.NoBrush)
+			p.setPen(QPen(QColor(self._C_WELL), max(2, sw + 1)))
+			wx = ox + self._well_idx * 3 * cw
+			wy = oy + self._well_idx * 3 * rh
+			p.drawRect(wx, 0, 3 * cw, th - 1)
+			p.drawRect(0, wy, tw - 1, 3 * rh)
+			if show_grp_lbl:
+				p.setPen(QColor(self._C_WELL))
+				p.setFont(f_grp)
+				p.drawText(QRect(wx, 0, 3 * cw, cgh), Qt.AlignmentFlag.AlignCenter, f"● Cell {self._well_idx + 1} (WELL)")
+
 		p.end()
 
 	def _cell_color(self, val: float) -> tuple[QColor, QColor]:
@@ -874,8 +1126,8 @@ class _AutoFitScrollArea(QScrollArea):
 		self.resized.emit()
 
 
-class ResultsPage(QWidget):
-	"""Results viewer — grid symmetry checker, residual bars, convergence log."""
+class ValidationPage(QWidget):
+	"""Validation viewer — grid symmetry checker, residual bars, convergence log, Newton-Raphson vs quasi-Newton comparison."""
 
 	goToRunRequested = Signal()
 
@@ -890,6 +1142,9 @@ class ResultsPage(QWidget):
 		self._well_cell: int = 1
 		self._cell_btns: dict[int, QPushButton] = {}
 		self._prop_cell_widgets: dict[int, _HeatmapCellWidget] = {}
+		self._jac_sym_selected_cell: int | None = None
+		self._jac_sym_btns: dict[int, QPushButton] = {}
+		self._grid_connection_3d_page = Connectivity3DPage(show_bottom_controls=False, detail_mode="cell_diagnostics")
 
 		# ── Header ──────────────────────────────────────────────────────────
 		self._header = QWidget(self)
@@ -897,35 +1152,49 @@ class ResultsPage(QWidget):
 		_hrow = QHBoxLayout(self._header)
 		_hrow.setContentsMargins(20, 14, 20, 14)
 		_hrow.setSpacing(10)
-		_title = QLabel("Simulation Results", self._header)
+		_title = QLabel("Validation", self._header)
 		_title.setObjectName("resultTitle")
-		self._badge = QLabel("Belum ada run", self._header)
+		self._badge = QLabel("", self._header)
 		self._badge.setObjectName("resultBadge")
 		self._badge.setProperty("status", "empty")
+		self._badge.hide()
 		_go_run = QPushButton("Go to Run", self._header)
 		_go_run.setObjectName("resultActionButton")
 		_go_run.setFixedWidth(100)
 		_go_run.setCursor(Qt.CursorShape.PointingHandCursor)
 		_go_run.clicked.connect(self.goToRunRequested)
 		_hrow.addWidget(_title)
-		_hrow.addWidget(self._badge)
 		_hrow.addStretch(1)
 		_hrow.addWidget(_go_run)
 
-		# ── Tabs ─────────────────────────────────────────────────────────────
-		self._tabs = QTabWidget(self)
-		self._tabs.setObjectName("resultTabs")
-		self._tabs.tabBar().setObjectName("resultTabBar")
-		self._tabs.tabBar().setExpanding(False)
-		self._tabs.setDocumentMode(True)
-		self._tabs.addTab(self._build_grid_tab(),           "  Grid & Simetri  ")
-		self._tabs.addTab(self._build_residual_tab(),       "  Residual  ")
-		self._tabs.addTab(self._build_conv_tab(),     "  Konvergensi  ")
-		self._tabs.addTab(self._build_jacobian_tab(), "  Jacobian  ")
-		self._tabs.addTab(self._build_corrections_tab(), "  Koreksi Newton  ")
-		self._tabs.addTab(self._build_properties_tab(), "  Peta Properti  ")
-		self._tabs.addTab(self._build_summary_tab(),  "  Summary  ")
-		self._tabs.addTab(self._build_retry_tab(),    "  Retry Log  ")
+		# ── Groups ───────────────────────────────────────────────────────────
+		# Top-level group selection lives in the sidebar (Validation section in
+		# main_window.py), not as an in-page tab bar — this is a plain stacked
+		# widget switched via show_group().
+		self._tabs = QStackedWidget(self)
+		self._tabs.setObjectName("resultGroupStack")
+
+		self._tabs.addWidget(self._build_summary_tab())
+
+		residual_check_tabs = self._make_group_tabs()
+		residual_check_tabs.addTab(self._build_residual_tab(), "  Residual  ")
+		residual_check_tabs.addTab(self._build_conv_tab(), "  Konvergensi  ")
+		residual_check_tabs.addTab(self._build_retry_tab(), "  Retry Log  ")
+		self._tabs.addWidget(residual_check_tabs)
+
+		grid_connection_tabs = self._make_group_tabs()
+		grid_connection_tabs.addTab(self._build_grid_tab(), "  Connection List  ")
+		grid_connection_tabs.addTab(self._grid_connection_3d_page, "  Grid Property  ")
+		grid_connection_tabs.addTab(self._build_properties_tab(), "  Peta Properti  ")
+		self._tabs.addWidget(grid_connection_tabs)
+
+		jacobian_tabs = self._make_group_tabs()
+		jacobian_tabs.addTab(self._build_jacobian_tab(), "  Jacobian  ")
+		jacobian_tabs.addTab(self._build_jacobian_symmetry_tab(), "  Simetri Jacobian  ")
+		jacobian_tabs.addTab(self._build_corrections_tab(), "  Koreksi Newton  ")
+		self._tabs.addWidget(jacobian_tabs)
+
+		self._tabs.addWidget(self._build_comparison_tab())
 
 		# ── Root layout ──────────────────────────────────────────────────────
 		root = QVBoxLayout(self)
@@ -937,7 +1206,8 @@ class ResultsPage(QWidget):
 		# Wire signals
 		self.retry_scope_combo.currentIndexChanged.connect(self._refresh_retry_table)
 		self.retry_status_combo.currentIndexChanged.connect(self._refresh_retry_table)
-		self._well_spin.valueChanged.connect(self._on_well_changed)
+		if hasattr(self, "_well_spin"):
+			self._well_spin.valueChanged.connect(self._on_well_changed)
 
 		# Build initial grid
 		self._rebuild_grid()
@@ -946,33 +1216,57 @@ class ResultsPage(QWidget):
 	# Tab builders
 	# =========================================================================
 
+	def _make_group_tabs(self) -> QTabWidget:
+		group = QTabWidget()
+		group.setObjectName("resultGroupTabs")
+		group.tabBar().setObjectName("resultGroupTabBar")
+		group.tabBar().setExpanding(False)
+		group.setDocumentMode(True)
+		return group
+
+	def _build_grid_tab_placeholder(self) -> QWidget:
+		"""Grid Property placeholder — Connection List already owns the live
+		self._grid_* widgets, so this can't just call _build_grid_tab() again
+		(that would silently steal those attributes from the real tab). Stays
+		a static notice until Grid Property gets its own dedicated view."""
+		w = QWidget()
+		w.setObjectName("resultGridPropertyPlaceholder")
+		lay = QVBoxLayout(w)
+		lay.setContentsMargins(20, 20, 20, 20)
+		lay.setSpacing(8)
+		notice = QLabel(
+			"Sama seperti Connection List untuk saat ini — tampilan Grid Property "
+			"akan dirombak terpisah di task berikutnya."
+		)
+		notice.setWordWrap(True)
+		notice.setObjectName("resultRowLabel")
+		lay.addWidget(notice)
+		lay.addStretch(1)
+		return w
+
 	def _build_grid_tab(self) -> QWidget:
 		w = QWidget()
 		w.setObjectName("resultGridTab")
 		vlay = QVBoxLayout(w)
-		vlay.setContentsMargins(12, 10, 12, 12)
-		vlay.setSpacing(8)
+		vlay.setContentsMargins(0, 0, 0, 0)
+		vlay.setSpacing(0)
 
 		# Controls row
 		toolbar = QWidget(w)
 		toolbar.setObjectName("resultToolbar")
 		ctrl = QHBoxLayout(toolbar)
-		ctrl.setContentsMargins(12, 9, 12, 9)
+		ctrl.setContentsMargins(16, 8, 16, 8)
 		ctrl.setSpacing(14)
-		well_label = QLabel("Well cell (1-indeks):")
-		well_label.setObjectName("resultToolbarLabel")
-		ctrl.addWidget(well_label)
-		self._well_spin = QSpinBox()
-		self._well_spin.setObjectName("resultWellSpin")
-		self._well_spin.setRange(1, 9999)
-		self._well_spin.setValue(1)
-		self._well_spin.setFixedWidth(80)
-		ctrl.addWidget(self._well_spin)
-		ctrl.addStretch(1)
+		title = QLabel("Connection List")
+		title.setObjectName("pageTitle")
+		title.setStyleSheet("font-size: 13pt; font-weight: 700; color: #0F5C8E;")
+		ctrl.addWidget(title)
+		self._grid_hint = QLabel("Pilih cell untuk melihat koneksi langsungnya.")
+		self._grid_hint.setObjectName("resultStatusLine")
+		ctrl.addWidget(self._grid_hint, 1)
 		for kind, text in [
-			("well", "Well"),
+			("symmetric", "Connected"),
 			("selected", "Dipilih"),
-			("symmetric", "Simetris"),
 		]:
 			dot = QFrame()
 			dot.setObjectName("resultLegendDot")
@@ -984,7 +1278,7 @@ class ResultsPage(QWidget):
 			ctrl.addWidget(legend_lbl)
 		vlay.addWidget(toolbar)
 
-		# Splitter: left = grid scroll, right = info cards
+		# Splitter: left = isometric grid, right = connection cards
 		splitter = QSplitter(Qt.Orientation.Horizontal)
 		splitter.setHandleWidth(6)
 		splitter.setChildrenCollapsible(False)
@@ -996,20 +1290,15 @@ class ResultsPage(QWidget):
 		self._grid_container = QWidget()
 		self._grid_container.setObjectName("resultGridPanel")
 		self._grid_layout = QGridLayout(self._grid_container)
-		self._grid_layout.setSpacing(4)
-		self._grid_layout.setContentsMargins(8, 8, 8, 8)
-		self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+		self._grid_layout.setSpacing(8)
+		self._grid_layout.setContentsMargins(16, 16, 16, 16)
+		self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 		self._grid_scroll.setWidget(self._grid_container)
-
-		self._grid_hint = QLabel("Grid aktif: 2 x 1 (XY).")
-		self._grid_hint.setObjectName("resultGridHint")
-		self._grid_hint.setWordWrap(True)
 
 		left_w = QWidget()
 		left_lay = QVBoxLayout(left_w)
-		left_lay.setContentsMargins(0, 0, 0, 0)
-		left_lay.setSpacing(8)
-		left_lay.addWidget(self._grid_hint)
+		left_lay.setContentsMargins(12, 12, 6, 12)
+		left_lay.setSpacing(0)
 		left_lay.addWidget(self._grid_scroll, 1)
 		left_w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -1017,23 +1306,23 @@ class ResultsPage(QWidget):
 
 		right_w = QWidget()
 		right_w.setObjectName("resultInfoPanel")
-		right_w.setMinimumWidth(290)
-		right_w.setMaximumWidth(430)
+		right_w.setMinimumWidth(320)
+		right_w.setMaximumWidth(460)
 		right_lay = QVBoxLayout(right_w)
-		right_lay.setContentsMargins(4, 0, 0, 0)
+		right_lay.setContentsMargins(8, 12, 12, 12)
 		right_lay.setSpacing(10)
 
-		self._sel_card, self._sel_card_title = _make_card("Sel Dipilih: —", icon="S", color="#0F5C8E")
+		self._sel_card, self._sel_card_title = _make_card("Selected Cell: —", icon="S", color="#0F5C8E")
 		self._lbl_sel_p   = _add_row(self._sel_card, "Pressure", "—")
 		self._lbl_sel_sw  = _add_row(self._sel_card, "Sw", "—")
 		self._lbl_sel_sg  = _add_row(self._sel_card, "Sg", "—")
-		self._lbl_sel_res = _add_row(self._sel_card, "Residual", "—")
+		self._lbl_sel_res = _add_row(self._sel_card, "Connected", "—")
 		right_lay.addWidget(self._sel_card)
 
-		self._sym_card, _ = _make_card("Cek Simetri", icon="C", color="#2D6A4F")
+		self._sym_card, _ = _make_card("Cell Connections", icon="C", color="#2D6A4F")
 		self._sym_body = QVBoxLayout()
 		self._sym_body.setSpacing(5)
-		_h = QLabel("Pilih sel untuk melihat cek simetri.")
+		_h = QLabel("Pilih cell pada grid untuk melihat koneksi langsung berdasarkan grid model.")
 		_h.setObjectName("resultRowLabel")
 		_h.setWordWrap(True)
 		self._sym_body.addWidget(_h)
@@ -1044,7 +1333,7 @@ class ResultsPage(QWidget):
 		splitter.addWidget(right_w)
 		splitter.setStretchFactor(0, 1)
 		splitter.setStretchFactor(1, 0)
-		splitter.setSizes([700, 330])
+		splitter.setSizes([720, 360])
 		vlay.addWidget(splitter, 1)
 		return w
 
@@ -1316,8 +1605,122 @@ class ResultsPage(QWidget):
 		vlay.addWidget(scroll, 1)
 		return w
 
+	def _build_jacobian_symmetry_tab(self) -> QWidget:
+		w = QWidget()
+		w.setObjectName("resultJacobianSymmetryTab")
+		vlay = QVBoxLayout(w)
+		vlay.setContentsMargins(12, 10, 12, 12)
+		vlay.setSpacing(8)
+
+		toolbar = QWidget(w)
+		toolbar.setObjectName("resultToolbar")
+		ctrl = QHBoxLayout(toolbar)
+		ctrl.setContentsMargins(12, 9, 12, 9)
+		ctrl.setSpacing(12)
+
+		self._jac_sym_status = QLabel("Jalankan simulasi dulu.")
+		self._jac_sym_status.setObjectName("resultStatusLine")
+		self._jac_sym_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+		ctrl.addWidget(self._jac_sym_status, 1)
+
+		step_lbl = QLabel("Step:")
+		step_lbl.setObjectName("resultToolbarLabel")
+		ctrl.addWidget(step_lbl)
+
+		self._jac_sym_step_combo = QComboBox()
+		self._jac_sym_step_combo.setMinimumWidth(140)
+		self._jac_sym_step_combo.currentIndexChanged.connect(self._populate_jacobian_symmetry)
+		ctrl.addWidget(self._jac_sym_step_combo)
+
+		well_lbl = QLabel("Well cell:")
+		well_lbl.setObjectName("resultToolbarLabel")
+		ctrl.addWidget(well_lbl)
+
+		self._jac_sym_well_spin = QSpinBox()
+		self._jac_sym_well_spin.setRange(1, 9999)
+		self._jac_sym_well_spin.setFixedWidth(80)
+		self._jac_sym_well_spin.valueChanged.connect(self._on_jacobian_sym_well_changed)
+		ctrl.addWidget(self._jac_sym_well_spin)
+
+		for kind, text in [("well", "Well"), ("selected", "Dipilih"), ("symmetric", "Simetris")]:
+			dot = QFrame()
+			dot.setObjectName("resultLegendDot")
+			dot.setProperty("kind", kind)
+			dot.setFixedSize(12, 12)
+			ctrl.addWidget(dot)
+			legend_lbl = QLabel(text)
+			legend_lbl.setObjectName("resultLegendLabel")
+			ctrl.addWidget(legend_lbl)
+
+		vlay.addWidget(toolbar)
+
+		splitter = QSplitter(Qt.Orientation.Horizontal)
+		splitter.setHandleWidth(6)
+		splitter.setChildrenCollapsible(False)
+
+		self._jac_sym_grid_scroll = QScrollArea()
+		self._jac_sym_grid_scroll.setObjectName("resultGridScroll")
+		self._jac_sym_grid_scroll.setWidgetResizable(True)
+		self._jac_sym_grid_scroll.setFrameShape(QFrame.Shape.NoFrame)
+		self._jac_sym_grid_container = QWidget()
+		self._jac_sym_grid_container.setObjectName("resultGridPanel")
+		self._jac_sym_grid_layout = QGridLayout(self._jac_sym_grid_container)
+		self._jac_sym_grid_layout.setSpacing(4)
+		self._jac_sym_grid_layout.setContentsMargins(8, 8, 8, 8)
+		self._jac_sym_grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+		self._jac_sym_grid_scroll.setWidget(self._jac_sym_grid_container)
+
+		self._jac_sym_hint = QLabel("Pilih sel untuk melihat simetri baris pressure Jacobian plus diagonal blok 3x3: Ro-p, Rw-Sw, dan Rg-Sg.")
+		self._jac_sym_hint.setObjectName("resultGridHint")
+		self._jac_sym_hint.setWordWrap(True)
+
+		left_w = QWidget()
+		left_lay = QVBoxLayout(left_w)
+		left_lay.setContentsMargins(0, 0, 0, 0)
+		left_lay.setSpacing(8)
+		left_lay.addWidget(self._jac_sym_hint)
+		left_lay.addWidget(self._jac_sym_grid_scroll, 1)
+		splitter.addWidget(left_w)
+
+		right_w = QWidget()
+		right_w.setObjectName("resultInfoPanel")
+		right_w.setMinimumWidth(300)
+		right_w.setMaximumWidth(450)
+		right_lay = QVBoxLayout(right_w)
+		right_lay.setContentsMargins(4, 0, 0, 0)
+		right_lay.setSpacing(10)
+
+		self._jac_sym_sel_card, self._jac_sym_sel_title = _make_card("Diag Cell Jacobian: —", icon="J", color="#0F5C8E")
+		self._jac_sym_diag = _add_row(self._jac_sym_sel_card, "Diag p", "—")
+		self._jac_sym_diag_sw = _add_row(self._jac_sym_sel_card, "Diag Sw", "—")
+		self._jac_sym_diag_sg = _add_row(self._jac_sym_sel_card, "Diag Sg", "—")
+		self._jac_sym_well = _add_row(self._jac_sym_sel_card, "Well p", "—")
+		self._jac_sym_rowmax = _add_row(self._jac_sym_sel_card, "Max diag", "—")
+		right_lay.addWidget(self._jac_sym_sel_card)
+
+		self._jac_sym_card, _ = _make_card("Cek Simetri Jacobian", icon="S", color="#2D6A4F")
+		self._jac_sym_body = QVBoxLayout()
+		self._jac_sym_body.setSpacing(5)
+		placeholder = QLabel("Pilih sel untuk membandingkan simetri pressure row dan diag cell p/Sw/Sg.")
+		placeholder.setObjectName("resultRowLabel")
+		placeholder.setWordWrap(True)
+		self._jac_sym_body.addWidget(placeholder)
+		self._jac_sym_card.layout().addLayout(self._jac_sym_body)
+		right_lay.addWidget(self._jac_sym_card)
+		right_lay.addStretch(1)
+
+		splitter.addWidget(right_w)
+		splitter.setStretchFactor(0, 1)
+		splitter.setStretchFactor(1, 0)
+		splitter.setSizes([700, 340])
+		vlay.addWidget(splitter, 1)
+
+		self._rebuild_jacobian_sym_grid()
+		return w
+
 	def _on_jacobian_step_changed(self) -> None:
 		self._populate_jacobian_display()
+		self._populate_jacobian_symmetry()
 
 	def _populate_jacobian_display(self) -> None:
 		if self._run_result is None or not self._run_result.steps:
@@ -1353,7 +1756,8 @@ class ResultsPage(QWidget):
 			n_cells = 0
 			display_data = jacobian
 
-		self._jacobian_canvas.set_data(display_data, n_cells, 1.0)
+		well_cell = self.project_config.wells[0].cell_id if self.project_config and self.project_config.wells else None
+		self._jacobian_canvas.set_data(display_data, n_cells, 1.0, well_cell=well_cell)
 		self._apply_jacobian_zoom()
 
 		n = len(display_data)
@@ -1361,6 +1765,240 @@ class ResultsPage(QWidget):
 		self._jacobian_status.setText(
 			f"Step {idx + 1}  ·  {n}×{n}  ·  {n_cells} sel  ·  Max |J|: {max_abs:.4e}"
 		)
+
+	def _extract_pressure_jacobian(self, step: TimeStepResult) -> list[list[float]]:
+		jacobian = getattr(step, "jacobian", [])
+		if not jacobian:
+			return []
+		raw_rows = len(jacobian)
+		raw_cols = len(jacobian[0]) if raw_rows > 0 else 0
+		if raw_rows <= 0 or raw_rows != raw_cols or raw_rows % 3 != 0:
+			return []
+		n_cells = raw_rows // 3
+		return [list(row[:n_cells]) for row in jacobian[:n_cells]]
+
+	def _extract_cell_diag_jacobian(self, step: TimeStepResult | None) -> dict[str, list[float]]:
+		jacobian = getattr(step, "jacobian", []) if step is not None else []
+		if not jacobian:
+			return {}
+		raw_rows = len(jacobian)
+		raw_cols = len(jacobian[0]) if raw_rows > 0 else 0
+		if raw_rows <= 0 or raw_rows != raw_cols or raw_rows % 3 != 0:
+			return {}
+		n_cells = raw_rows // 3
+		diag: dict[str, list[float]] = {key: [] for key, _, _, _ in _JAC_DIAG_COMPONENTS}
+		for cell_idx in range(n_cells):
+			for key, _, row_block, col_block in _JAC_DIAG_COMPONENTS:
+				row = row_block * n_cells + cell_idx
+				col = col_block * n_cells + cell_idx
+				diag[key].append(float(jacobian[row][col]))
+		return diag
+
+	def _jacobian_sym_heat(self, value: float, max_abs: float) -> tuple[QColor, QColor]:
+		if max_abs <= 1e-30 or abs(value) < 1e-30:
+			return QColor("#F7F9FB"), QColor("#5B6676")
+		t = min(math.sqrt(abs(value) / max_abs), 1.0)
+		def _blend(a: tuple[int, int, int], b: tuple[int, int, int], f: float) -> QColor:
+			return QColor(
+				int(a[0] + f * (b[0] - a[0])),
+				int(a[1] + f * (b[1] - a[1])),
+				int(a[2] + f * (b[2] - a[2])),
+			)
+		if value > 0:
+			bg = _blend((219, 234, 254), (30, 58, 138), t)
+		else:
+			bg = _blend((254, 226, 226), (136, 19, 55), t)
+		fg = QColor("#1F2937") if t < 0.45 else QColor("#F7F9FB")
+		return bg, fg
+
+	def _rebuild_jacobian_sym_grid(self) -> None:
+		if not hasattr(self, "_jac_sym_grid_layout"):
+			return
+		while self._jac_sym_grid_layout.count():
+			item = self._jac_sym_grid_layout.takeAt(0)
+			if item.widget():
+				item.widget().deleteLater()
+		self._jac_sym_btns.clear()
+		self._jac_sym_selected_cell = None
+		for row in range(self._ny):
+			for col in range(self._nx):
+				n = row * self._nx + col + 1
+				btn = QPushButton()
+				btn.setObjectName("symGridCell")
+				btn.setProperty("mode", "normal")
+				btn.setFixedSize(72, 62)
+				btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+				btn.setCursor(Qt.CursorShape.PointingHandCursor)
+				btn.clicked.connect(lambda _=False, cell=n: self._select_jacobian_sym_cell(cell))
+				self._jac_sym_btns[n] = btn
+				self._jac_sym_grid_layout.addWidget(btn, row, col, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+		total = max(self._nx * self._ny, 1)
+		if hasattr(self, "_jac_sym_well_spin"):
+			self._jac_sym_well_spin.setRange(1, total)
+			self._jac_sym_well_spin.setValue(min(self._well_cell, total))
+		self._refresh_jacobian_sym_grid()
+
+	def _refresh_jacobian_sym_grid(self) -> None:
+		step = None
+		jpp: list[list[float]] = []
+		diag: dict[str, list[float]] = {}
+		if self._run_result is not None and self._run_result.steps and hasattr(self, "_jac_sym_step_combo"):
+			idx = self._jac_sym_step_combo.currentIndex()
+			if 0 <= idx < len(self._run_result.steps):
+				step = self._run_result.steps[idx]
+				jpp = self._extract_pressure_jacobian(step)
+				diag = self._extract_cell_diag_jacobian(step)
+		sym_set = set(_symmetric_cells(self._jac_sym_selected_cell, self._well_cell, self._nx, self._ny)) if self._jac_sym_selected_cell is not None else set()
+
+		for n, btn in self._jac_sym_btns.items():
+			is_well = n == self._well_cell
+			is_sel = n == self._jac_sym_selected_cell
+			is_sym = n in sym_set
+			mode = "well" if is_well else ("selected" if is_sel else ("symmetric" if is_sym else "normal"))
+			text = str(n)
+			if diag.get("p") and n <= len(diag["p"]):
+				value = diag["p"][n - 1]
+				text = f"{n}\nP {value:.1e}"
+			elif jpp and n <= len(jpp):
+				value = jpp[n - 1][n - 1]
+				text = f"{n}\nP {value:.1e}"
+			if is_well and not is_sel:
+				text += "\nWELL"
+			elif is_sym:
+				text += "\nSIM"
+			btn.setStyleSheet("")
+			btn.setProperty("mode", mode)
+			_repolish(btn)
+			btn.setText(text)
+
+	def _select_jacobian_sym_cell(self, n: int) -> None:
+		self._jac_sym_selected_cell = n
+		self._refresh_jacobian_sym_grid()
+		self._update_jacobian_sym_cards()
+
+	def _on_jacobian_sym_well_changed(self, value: int) -> None:
+		self._well_cell = value
+		self._refresh_jacobian_sym_grid()
+		self._update_jacobian_sym_cards()
+
+	def _populate_jacobian_symmetry(self) -> None:
+		if not hasattr(self, "_jac_sym_step_combo"):
+			return
+		if self._run_result is None or not self._run_result.steps:
+			self._jac_sym_status.setText("Jalankan simulasi dulu.")
+			self._refresh_jacobian_sym_grid()
+			self._update_jacobian_sym_cards()
+			return
+		idx = self._jac_sym_step_combo.currentIndex()
+		if idx < 0 or idx >= len(self._run_result.steps):
+			return
+		step = self._run_result.steps[idx]
+		jpp = self._extract_pressure_jacobian(step)
+		diag = self._extract_cell_diag_jacobian(step)
+		if not jpp or not diag:
+			self._jac_sym_status.setText(f"Step {idx + 1}  ·  Blok Jacobian 3x3 tidak tersedia.")
+		else:
+			max_abs = max((abs(v) for row in jpp for v in row), default=0.0)
+			max_diag = max((abs(v) for vals in diag.values() for v in vals), default=0.0)
+			self._jac_sym_status.setText(
+				f"Step {idx + 1}  ·  Jpp {len(jpp)}×{len(jpp)}  ·  diag p/Sw/Sg  ·  "
+				f"Max |Jpp|: {max_abs:.4e}  ·  Max |diag|: {max_diag:.4e}"
+			)
+		self._refresh_jacobian_sym_grid()
+		self._update_jacobian_sym_cards()
+
+	def _update_jacobian_sym_cards(self) -> None:
+		if not hasattr(self, "_jac_sym_body"):
+			return
+		n = self._jac_sym_selected_cell
+		_clear_layout(self._jac_sym_body)
+		if n is None:
+			msg = QLabel("Pilih sel untuk membandingkan simetri pressure row dan diag cell p/Sw/Sg.")
+			msg.setObjectName("resultRowLabel")
+			msg.setWordWrap(True)
+			self._jac_sym_body.addWidget(msg)
+			self._jac_sym_sel_title.setText("DIAG CELL JACOBIAN: —")
+			for lbl in (self._jac_sym_diag, self._jac_sym_diag_sw, self._jac_sym_diag_sg, self._jac_sym_well, self._jac_sym_rowmax):
+				lbl.setText("—")
+			return
+		step = None
+		if self._run_result is not None and self._run_result.steps:
+			idx = self._jac_sym_step_combo.currentIndex()
+			if 0 <= idx < len(self._run_result.steps):
+				step = self._run_result.steps[idx]
+		jpp = self._extract_pressure_jacobian(step) if step is not None else []
+		diag = self._extract_cell_diag_jacobian(step)
+		self._jac_sym_sel_title.setText(f"DIAG CELL JACOBIAN: SEL {n}")
+		if not jpp or not diag or n > len(jpp) or n > len(diag.get("p", [])):
+			for lbl in (self._jac_sym_diag, self._jac_sym_diag_sw, self._jac_sym_diag_sg, self._jac_sym_well, self._jac_sym_rowmax):
+				lbl.setText("—")
+			msg = QLabel("Data Jacobian 3x3 belum tersedia untuk step ini.")
+			msg.setObjectName("resultRowLabel")
+			msg.setWordWrap(True)
+			self._jac_sym_body.addWidget(msg)
+			return
+		self._jac_sym_diag.setText(f"{diag['p'][n - 1]:.4e}  (Ro-p)")
+		self._jac_sym_diag_sw.setText(f"{diag['sw'][n - 1]:.4e}  (Rw-Sw)")
+		self._jac_sym_diag_sg.setText(f"{diag['sg'][n - 1]:.4e}  (Rg-Sg)")
+		self._jac_sym_well.setText(f"{diag['p'][self._well_cell - 1]:.4e}" if self._well_cell <= len(diag['p']) else "—")
+		self._jac_sym_rowmax.setText(f"{max((abs(v) for vals in diag.values() for v in vals), default=0.0):.4e}")
+
+		syms = _symmetric_cells(n, self._well_cell, self._nx, self._ny)
+		if not syms:
+			msg = QLabel("Tidak ada pasangan simetris untuk sel ini.")
+			msg.setObjectName("resultRowLabel")
+			msg.setWordWrap(True)
+			self._jac_sym_body.addWidget(msg)
+			return
+
+		for s in syms:
+			code = _symmetry_transform_code_for_pair(n, s, self._well_cell, self._nx, self._ny)
+			if code is None or s > len(jpp) or s > len(diag["p"]):
+				continue
+			diffs: list[float] = []
+			denoms: list[float] = []
+			compared_cells: list[tuple[int, int]] = []
+			for c in range(1, len(jpp) + 1):
+				mapped = _apply_symmetry_transform(c, self._well_cell, self._nx, self._ny, code)
+				if mapped is None or mapped > len(jpp):
+					continue
+				v1 = jpp[n - 1][c - 1]
+				v2 = jpp[s - 1][mapped - 1]
+				diffs.append(abs(v1 - v2))
+				denoms.append(max(abs(v1), abs(v2), 1e-30))
+				compared_cells.append((c, mapped))
+			compared = len(compared_cells)
+			max_rel = max((d / denom for d, denom in zip(diffs, denoms)), default=0.0)
+			mean_abs = sum(diffs) / compared if compared else 0.0
+			diag_rel: dict[str, float] = {}
+			for key, _, _, _ in _JAC_DIAG_COMPONENTS:
+				v1 = diag[key][n - 1]
+				v2 = diag[key][s - 1]
+				d = abs(v1 - v2)
+				diag_rel[key] = d / max(abs(v1), abs(v2), 1e-30)
+			max_diag_rel = max(diag_rel.values(), default=0.0)
+			pass_check = max(max_rel, max_diag_rel) < 1e-4
+
+			chip = QFrame()
+			chip.setObjectName("symCheckChip")
+			chip.setProperty("state", "pass" if pass_check else "fail")
+			_repolish(chip)
+			chip_lay = QVBoxLayout(chip)
+			chip_lay.setContentsMargins(8, 6, 8, 6)
+			chip_lay.setSpacing(2)
+			lbl = QLabel(f"{'PASS' if pass_check else 'FAIL'}  Sel {n} ↔ Sel {s}")
+			lbl.setObjectName("symCheckLabel")
+			chip_lay.addWidget(lbl)
+			detail = QLabel(
+				f"Pressure row: {compared} elemen  ·  max rel diff: {max_rel:.3e}  ·  mean abs diff: {mean_abs:.3e}\n"
+				f"Diag cell: p {diag['p'][n - 1]:.3e} ↔ {diag['p'][s - 1]:.3e} (rel {diag_rel['p']:.3e})  ·  "
+				f"Sw {diag['sw'][n - 1]:.3e} ↔ {diag['sw'][s - 1]:.3e} (rel {diag_rel['sw']:.3e})  ·  "
+				f"Sg {diag['sg'][n - 1]:.3e} ↔ {diag['sg'][s - 1]:.3e} (rel {diag_rel['sg']:.3e})"
+			)
+			detail.setObjectName("resultRowLabel")
+			detail.setWordWrap(True)
+			chip_lay.addWidget(detail)
+			self._jac_sym_body.addWidget(chip)
 
 	def _get_jacobian_cell_color(self, val: float, max_abs: float) -> tuple[QColor, QColor]:
 		"""
@@ -1422,6 +2060,30 @@ class ResultsPage(QWidget):
 		self.jacobian_step_combo.blockSignals(False)
 
 		self._populate_jacobian_display()
+		self._refresh_jacobian_symmetry_tab()
+
+	def _refresh_jacobian_symmetry_tab(self) -> None:
+		if not hasattr(self, "_jac_sym_step_combo"):
+			return
+		if self._run_result is None or not self._run_result.steps:
+			self._jac_sym_status.setText("Jalankan simulasi dulu.")
+			self._jac_sym_step_combo.blockSignals(True)
+			self._jac_sym_step_combo.clear()
+			self._jac_sym_step_combo.blockSignals(False)
+			self._refresh_jacobian_sym_grid()
+			self._update_jacobian_sym_cards()
+			return
+		current_idx = self._jac_sym_step_combo.currentIndex()
+		self._jac_sym_step_combo.blockSignals(True)
+		self._jac_sym_step_combo.clear()
+		for si, s in enumerate(self._run_result.steps, 1):
+			self._jac_sym_step_combo.addItem(f"Step {si}  ·  t = {s.summary.time_days:.2f} d")
+		new_idx = len(self._run_result.steps) - 1
+		if 0 <= current_idx < len(self._run_result.steps):
+			new_idx = current_idx
+		self._jac_sym_step_combo.setCurrentIndex(new_idx)
+		self._jac_sym_step_combo.blockSignals(False)
+		self._populate_jacobian_symmetry()
 
 	def _jacobian_zoom_in(self) -> None:
 		self._set_jacobian_autofit(False)
@@ -1709,7 +2371,7 @@ class ResultsPage(QWidget):
 		vlay.setContentsMargins(14, 14, 14, 14)
 		vlay.setSpacing(10)
 
-		self.summary_label = QLabel("Belum ada hasil run.")
+		self.summary_label = QLabel("Jalankan simulasi untuk melihat validasi model.")
 		self.summary_label.setObjectName("resultStatusLine")
 		self.summary_label.setWordWrap(True)
 		vlay.addWidget(self.summary_label)
@@ -1792,11 +2454,77 @@ class ResultsPage(QWidget):
 		vlay.addWidget(self.retry_table)
 		return w
 
+	def _build_comparison_tab(self) -> QWidget:
+		w = QWidget()
+		w.setObjectName("resultComparisonTab")
+		vlay = QVBoxLayout(w)
+		vlay.setContentsMargins(16, 14, 16, 16)
+		vlay.setSpacing(14)
+
+		hint = QLabel(
+			"Tiap kali Run diklik, hasilnya mengisi kartu sesuai method yang aktif di "
+			"halaman Methods. Jalankan sekali per method untuk melihat perbandingan."
+		)
+		hint.setObjectName("resultStatusLine")
+		hint.setWordWrap(True)
+		vlay.addWidget(hint)
+
+		cards_row = QHBoxLayout()
+		cards_row.setSpacing(12)
+		self._comparison_newton_card = _ComparisonCard("Newton-Raphson")
+		self._comparison_quasi_card = _ComparisonCard("Quasi-Newton")
+		cards_row.addWidget(self._comparison_newton_card, 1)
+		cards_row.addWidget(self._comparison_quasi_card, 1)
+		vlay.addLayout(cards_row)
+
+		self._comparison_delta_label = QLabel("")
+		self._comparison_delta_label.setObjectName("resultStatusLine")
+		self._comparison_delta_label.setWordWrap(True)
+		vlay.addWidget(self._comparison_delta_label)
+
+		diagram_card, _ = _make_card("Konsep Newton-Raphson 1D (ilustratif)", icon="N", color="#0F5C8E")
+		diagram_note = QLabel(
+			"Diagram generik untuk intuisi — bukan diplot dari hasil run di atas. x mewakili "
+			"satu unknown (p, Sw, atau Sg), r(x) mewakili residual mass-balance."
+		)
+		diagram_note.setObjectName("resultRowLabel")
+		diagram_note.setWordWrap(True)
+		diagram_card.layout().addWidget(diagram_note)
+		self._newton_concept_diagram = _NewtonConceptDiagram()
+		diagram_card.layout().addWidget(self._newton_concept_diagram)
+		vlay.addWidget(diagram_card, 1)
+
+		return w
+
+	def set_comparison_results(
+		self,
+		newton_result: RunResult | None,
+		quasi_result: RunResult | None,
+	) -> None:
+		self._comparison_newton_card.set_result(newton_result)
+		self._comparison_quasi_card.set_result(quasi_result)
+		if newton_result is None or quasi_result is None:
+			self._comparison_delta_label.setText("")
+			return
+		newton_iters = sum(step.summary.newton_iterations for step in newton_result.steps)
+		quasi_iters = sum(step.summary.newton_iterations for step in quasi_result.steps)
+		newton_elapsed = newton_result.total_elapsed_seconds
+		quasi_elapsed = quasi_result.total_elapsed_seconds
+		iter_delta = quasi_iters - newton_iters
+		speedup = (newton_elapsed / quasi_elapsed) if quasi_elapsed > 1e-9 else 0.0
+		self._comparison_delta_label.setText(
+			f"Selisih iterasi (Quasi-Newton vs Newton-Raphson): {iter_delta:+d}  ·  "
+			f"CPU time: {newton_elapsed:.3f}s vs {quasi_elapsed:.3f}s  ·  "
+			f"speedup {speedup:.2f}x"
+		)
+
 	# =========================================================================
 	# Grid widget
 	# =========================================================================
 
 	def _rebuild_grid(self) -> None:
+		if not hasattr(self, "_grid_layout"):
+			return
 		while self._grid_layout.count():
 			item = self._grid_layout.takeAt(0)
 			if item.widget():
@@ -1810,53 +2538,34 @@ class ResultsPage(QWidget):
 				btn = QPushButton()
 				btn.setObjectName("symGridCell")
 				btn.setProperty("mode", "normal")
-				btn.setFixedSize(58, 58)
+				btn.setFixedSize(92, 78)
 				btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 				btn.setCursor(Qt.CursorShape.PointingHandCursor)
 				btn.clicked.connect(lambda _=False, cell=n: self._select_cell(cell))
 				self._cell_btns[n] = btn
-				self._grid_layout.addWidget(
-					btn,
-					row,
-					col,
-					Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-				)
+				self._grid_layout.addWidget(btn, row, col, Qt.AlignmentFlag.AlignCenter)
 
-		total = max(self._nx * self._ny, 1)
-		self._well_spin.setRange(1, total)
-		self._well_cell = min(self._well_cell, total)
-		self._well_spin.setValue(self._well_cell)
 		self._update_grid_hint()
 		self._refresh_cell_colors()
 
 	def _refresh_cell_colors(self) -> None:
+		if not self._cell_btns:
+			return
+		connected = {cell for cell, _ in self._get_selected_grid_connections(self._selected_cell)}
 		step = self._latest_step()
-		sym_set = set(
-			_symmetric_cells(self._selected_cell, self._well_cell, self._nx, self._ny)
-		) if self._selected_cell is not None else set()
-
 		for n, btn in self._cell_btns.items():
-			is_well = n == self._well_cell
-			is_sel  = n == self._selected_cell
-			is_sym  = n in sym_set
-
-			if is_well:
-				mode = "well"
-			elif is_sel:
+			if n == self._selected_cell:
 				mode = "selected"
-			elif is_sym:
+			elif n in connected:
 				mode = "symmetric"
 			else:
 				mode = "normal"
 
-			sub = "WELL" if is_well else ("SIM" if is_sym else "")
-
+			label = str(n)
 			if step and step.pressure and n <= len(step.pressure):
-				label = f"{n}\n{step.pressure[n - 1]:.0f}"
-			else:
-				label = str(n)
-			if sub:
-				label += f"\n{sub}"
+				label += f"\n{step.pressure[n - 1]:.0f}"
+			if n in connected:
+				label += "\nCONN"
 
 			btn.setProperty("mode", mode)
 			_repolish(btn)
@@ -1873,7 +2582,8 @@ class ResultsPage(QWidget):
 		if n is None:
 			return
 		row, col = divmod(n - 1, self._nx)
-		self._sel_card_title.setText(f"SEL DIPILIH: {n}  (baris {row + 1}, kol {col + 1})")
+		connections = self._get_selected_grid_connections(n)
+		self._sel_card_title.setText(f"SELECTED CELL: {n}  (row {row + 1}, col {col + 1})")
 
 		step = self._latest_step()
 		if step and step.pressure and n <= len(step.pressure):
@@ -1881,63 +2591,52 @@ class ResultsPage(QWidget):
 			self._lbl_sel_p.setText(f"{step.pressure[idx]:.2f} psia")
 			self._lbl_sel_sw.setText(f"{step.sw[idx]:.4f}")
 			self._lbl_sel_sg.setText(f"{step.sg[idx]:.4f}")
-			res = (
-				step.residual_per_cell[idx]
-				if step.residual_per_cell and idx < len(step.residual_per_cell)
-				else float("nan")
-			)
-			self._lbl_sel_res.setText(f"{res:.4e}")
 		else:
-			for lbl in (self._lbl_sel_p, self._lbl_sel_sw, self._lbl_sel_sg, self._lbl_sel_res):
+			for lbl in (self._lbl_sel_p, self._lbl_sel_sw, self._lbl_sel_sg):
 				lbl.setText("—")
+		self._lbl_sel_res.setText(f"{len(connections)} cell")
+
+	def _get_selected_grid_connections(self, n: int | None) -> list[tuple[int, object]]:
+		if n is None or self.project_config is None:
+			return []
+		try:
+			grid_model = build_grid(self.project_config)
+			update_grid_transmissibility(grid_model)
+		except Exception:
+			return []
+		selected_0 = n - 1
+		connections: list[tuple[int, object]] = []
+		for conn in grid_model.connections:
+			if conn.from_cell_id == selected_0:
+				connections.append((conn.to_cell_id + 1, conn))
+			elif conn.to_cell_id == selected_0:
+				connections.append((conn.from_cell_id + 1, conn))
+		return sorted(connections, key=lambda item: item[0])
 
 	def _update_sym_card(self) -> None:
 		n = self._selected_cell
-		step = self._latest_step()
-		syms = _symmetric_cells(n, self._well_cell, self._nx, self._ny) if n is not None else []
-
 		_clear_layout(self._sym_body)
-
-		if not syms:
-			h = QLabel("Tidak ada pasangan simetris untuk sel ini.")
+		connections = self._get_selected_grid_connections(n)
+		if n is None:
+			h = QLabel("Pilih cell untuk melihat koneksi langsung.")
 			h.setObjectName("resultRowLabel")
 			h.setWordWrap(True)
 			self._sym_body.addWidget(h)
 			return
-
-		if step is None:
-			h = QLabel(
-				f"Sel {n} simetris dengan: {', '.join(str(s) for s in syms)}\n\n"
-				f"Jalankan simulasi untuk membandingkan residual."
-			)
+		if not connections:
+			h = QLabel(f"Cell {n} tidak punya koneksi aktif pada grid model.")
 			h.setObjectName("resultRowLabel")
 			h.setWordWrap(True)
 			self._sym_body.addWidget(h)
 			return
-
-		# With simulation data — compare residuals per symmetric pair
-		for s in syms:
-			pass_check = True
-			detail = ""
-			if (
-				step.residual_per_cell
-				and n <= len(step.residual_per_cell)
-				and s <= len(step.residual_per_cell)
-			):
-				v1 = step.residual_per_cell[n - 1]
-				v2 = step.residual_per_cell[s - 1]
-				pass_check = _residuals_close(v1, v2)
-				detail = f"  ({v1:.3e} vs {v2:.3e})"
-
-			icon = "PASS" if pass_check else "FAIL"
-
+		for neighbor, _conn in connections:
 			chip = QFrame()
 			chip.setObjectName("symCheckChip")
-			chip.setProperty("state", "pass" if pass_check else "fail")
+			chip.setProperty("state", "pass")
 			_repolish(chip)
 			chip_lay = QHBoxLayout(chip)
 			chip_lay.setContentsMargins(8, 5, 8, 5)
-			chip_lbl = QLabel(f"{icon}  Sel {n} ↔ Sel {s}{detail}")
+			chip_lbl = QLabel(f"Cell {n} ↔ Cell {neighbor}")
 			chip_lbl.setObjectName("symCheckLabel")
 			chip_lay.addWidget(chip_lbl, 1)
 			self._sym_body.addWidget(chip)
@@ -2054,7 +2753,7 @@ class ResultsPage(QWidget):
 			f"Step {new_idx + 1}  ·  t = {step.summary.time_days:.2f} hari  ·  {n_cells} sel"
 		)
 		self._resid_conv_badge.setText("✓ Konvergen" if converged else "✗ Belum Konvergen")
-		self._resid_conv_badge.setProperty("status", "ok" if converged else "empty")
+		self._resid_conv_badge.setProperty("status", "ok" if converged else "fail")
 		_repolish(self._resid_conv_badge)
 		self._resid_phase_lbls["oil"].setText(f"{step.max_oil_residual:.4e}")
 		self._resid_phase_lbls["water"].setText(f"{step.max_water_residual:.4e}")
@@ -2202,42 +2901,55 @@ class ResultsPage(QWidget):
 
 	def _update_grid_hint(self) -> None:
 		cells_xy = self._nx * self._ny
-		if cells_xy <= 4:
-			self._grid_hint.setText(
-				f"Grid aktif: {self._nx} x {self._ny} (XY). Jadi sel yang tampil memang sedikit. "
-				f"Untuk uji simetri dosen (5x5), ubah dulu grid di halaman Grid."
-			)
-		else:
-			self._grid_hint.setText(
-				f"Grid aktif: {self._nx} x {self._ny} (XY) — klik sel untuk cek pasangan simetri terhadap well."
-			)
+		self._grid_hint.setText(
+			f"Grid {self._nx} x {self._ny} ({cells_xy} sel XY)  ·  klik cell untuk melihat koneksi langsung."
+		)
 
 	# =========================================================================
 	# Public API
 	# =========================================================================
 
+	def show_group(self, index: int) -> None:
+		"""Select which top-level group is visible — driven by the Validation
+		section buttons in the main window sidebar, not an in-page tab bar."""
+		self._tabs.setCurrentIndex(index)
+
 	def set_project(self, project_config: ProjectConfig) -> None:
 		"""Update grid dimensions from project. Rebuilds grid if size changed."""
 		self.project_config = project_config
+		self._grid_connection_3d_page.set_project(project_config)
 		gs = project_config.grid_spec
 		changed = (gs.nx != self._nx or gs.ny != self._ny)
 		self._nx = gs.nx
 		self._ny = gs.ny
-		# Default well to centre of XY plane
-		cx = max(gs.nx // 2, 0)
-		cy = max(gs.ny // 2, 0)
-		self._well_cell = cy * gs.nx + cx + 1
+		if project_config.wells:
+			# Symmetry is checked relative to the well actually placed in Well Placement.
+			self._well_cell = project_config.wells[0].cell_id
+		else:
+			# No well placed yet — fall back to grid centre as a neutral default.
+			cx = max(gs.nx // 2, 0)
+			cy = max(gs.ny // 2, 0)
+			self._well_cell = cy * gs.nx + cx + 1
 		if changed:
 			self._rebuild_grid()
+			self._rebuild_jacobian_sym_grid()
 		else:
 			self._update_grid_hint()
+			if hasattr(self, "_jac_sym_well_spin"):
+				self._jac_sym_well_spin.blockSignals(True)
+				self._jac_sym_well_spin.setRange(1, max(gs.nx * gs.ny, 1))
+				self._jac_sym_well_spin.setValue(self._well_cell)
+				self._jac_sym_well_spin.blockSignals(False)
+			self._refresh_jacobian_sym_grid()
 
 	def set_run_result(self, run_result: RunResult | None) -> None:
 		self._run_result = run_result
 		self._active_run_result = run_result
+		self._grid_connection_3d_page.set_run_result(run_result)
+		self._refresh_jacobian_symmetry_tab()
 
 		if run_result is None:
-			self.summary_label.setText("Belum ada hasil run.")
+			self.summary_label.setText("Jalankan simulasi untuk melihat validasi model.")
 			self._sum_steps.setText("-")
 			self._sum_time.setText("-")
 			self._sum_converged.setText("-")
@@ -2255,8 +2967,9 @@ class ResultsPage(QWidget):
 			self._prop_status.setText("Jalankan simulasi dulu.")
 			self.prop_table.setRowCount(0)
 			self._clear_prop_grid()
-			self._badge.setText("Belum ada run")
+			self._badge.setText("")
 			self._badge.setProperty("status", "empty")
+			self._badge.hide()
 			_repolish(self._badge)
 			self._refresh_jacobian_tab()
 			self._refresh_corrections_tab()
@@ -2266,6 +2979,7 @@ class ResultsPage(QWidget):
 		warn_count = len(run_result.warnings)
 		self._badge.setText(f"{step_count} step(s)  •  {warn_count} warning(s)")
 		self._badge.setProperty("status", "ok" if not warn_count else "warn")
+		self._badge.hide()
 		_repolish(self._badge)
 
 		s = get_run_summary(run_result)

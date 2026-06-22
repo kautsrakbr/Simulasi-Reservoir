@@ -14,8 +14,8 @@ from PySide6.QtWidgets import (
 from engine.domain.project import ProjectConfig
 from windows.ui_kit import make_card, make_hero_banner
 
-_AXIS_COLOR = {"X": "#ef4444", "Y": "#10b981", "Z": "#3b82f6"}
-_AXIS_TINT = {"X": "#fef2f2", "Y": "#ecfdf5", "Z": "#eff6ff"}
+_AXIS_COLOR = {"X": "#0C4A73", "Y": "#0F5C8E", "Z": "#2563A6"}
+_AXIS_TINT = {"X": "#DCEAF7", "Y": "#DCEAF7", "Z": "#DCEAF7"}
 
 
 def _axis_row(axis: str, label_text: str, spin: QWidget, suffix: str = "") -> QWidget:

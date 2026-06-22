@@ -24,6 +24,9 @@ def build_connections(grid_model: GridModel) -> list[Connection]:
 
 
 def find_cartesian_neighbors(cell_index: int, grid_spec: GridSpec) -> list[tuple[int, str]]:
+	# grid_spec.connectivity (5 | 9 | 11) is recorded from the UI, but only the
+	# 5-point orthogonal stencil is implemented today -- 9/11-point connectivity
+	# falls back to this same neighbor set until that logic is built.
 	nx = grid_spec.nx
 	ny = grid_spec.ny
 	nz = grid_spec.nz

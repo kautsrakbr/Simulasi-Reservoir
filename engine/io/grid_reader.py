@@ -11,4 +11,5 @@ def read_grid_spec(source: dict[str, float | int]) -> GridSpec:
 		dx=float(source.get("dx", 1.0)),
 		dy=float(source.get("dy", 1.0)),
 		dz=float(source.get("dz", 1.0)),
+		connectivity=int(source.get("connectivity", 5)),
 	)

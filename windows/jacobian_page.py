@@ -354,8 +354,8 @@ class JacobianPage(QWidget):
 		self._cell_info_banner.setObjectName("cellInfoBanner")
 		self._cell_info_banner.setStyleSheet("""
 			QWidget#cellInfoBanner {
-				background-color: #0F5C8E;
-				border-bottom: 2px solid #0C4A73;
+				background-color: #ffffff;
+				border-bottom: 1px solid #D7DEE7;
 			}
 		""")
 		ci_outer = QHBoxLayout(self._cell_info_banner)
@@ -370,12 +370,12 @@ class JacobianPage(QWidget):
 		ci_num_lay.setSpacing(0)
 		self._ci_tag = QLabel("PERTURB CELL")
 		self._ci_tag.setStyleSheet(
-			"font-size: 6pt; font-weight: 700; color: #A9CCE5; letter-spacing: 1.8px; background: transparent;"
+			"font-size: 6pt; font-weight: 700; color: #93A1B2; letter-spacing: 1.8px; background: transparent;"
 		)
 		ci_num_lay.addWidget(self._ci_tag)
 		self._ci_cell_num = QLabel("Cell -")
 		self._ci_cell_num.setStyleSheet(
-			"font-size: 17pt; font-weight: 700; color: #ffffff; background: transparent;"
+			"font-size: 17pt; font-weight: 700; color: #1F2937; background: transparent;"
 		)
 		ci_num_lay.addWidget(self._ci_cell_num)
 		ci_outer.addWidget(ci_num_block)
@@ -383,7 +383,7 @@ class JacobianPage(QWidget):
 		# Divider
 		ci_div = QFrame()
 		ci_div.setFrameShape(QFrame.Shape.VLine)
-		ci_div.setStyleSheet("background: rgba(255,255,255,70); border: none; max-width: 1px; margin: 4px 16px;")
+		ci_div.setStyleSheet("background: #D7DEE7; border: none; max-width: 1px; margin: 4px 16px;")
 		ci_outer.addWidget(ci_div)
 
 		# Right: info grid
@@ -395,19 +395,19 @@ class JacobianPage(QWidget):
 
 		self._ci_coords = QLabel("-")
 		self._ci_coords.setStyleSheet(
-			"font-size: 8.5pt; color: #D7E8F5; font-weight: 700; background: transparent;"
+			"font-size: 8.5pt; color: #5B6676; font-weight: 700; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_coords)
 
 		self._ci_conn_lbl = QLabel("-")
 		self._ci_conn_lbl.setStyleSheet(
-			"font-size: 8pt; color: #A9CCE5; background: transparent;"
+			"font-size: 8pt; color: #93A1B2; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_conn_lbl)
 
 		self._ci_well_lbl = QLabel("")
 		self._ci_well_lbl.setStyleSheet(
-			"font-size: 8pt; color: #F2C572; font-weight: 700; background: transparent;"
+			"font-size: 8pt; color: #A86A15; font-weight: 700; background: transparent;"
 		)
 		ci_info_lay.addWidget(self._ci_well_lbl)
 		ci_outer.addWidget(ci_info, 1)
@@ -439,6 +439,7 @@ class JacobianPage(QWidget):
 		# ── Bottom controls ──────────────────────────────────────────────────────────
 		bottom = QWidget()
 		bottom.setObjectName("bottomPanel")
+		bottom.setMinimumHeight(320)
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
@@ -646,23 +647,22 @@ class JacobianPage(QWidget):
 
 		bot_layout.addWidget(self._preview_card)
 
-		_save_btn = QPushButton("✓   Save Changes")
-		_save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-		_save_btn.setStyleSheet("""
-			QPushButton {
-				background-color: #0F5C8E;
-				color: #ffffff; border: none;
-				border-radius: 9px; padding: 10px 20px;
-				font-size: 9.5pt; font-weight: 700; min-height: 38px; margin-top: 6px;
-				letter-spacing: 0.3px;
-			}
-			QPushButton:hover {
-				background-color: #2E7DAE;
-			}
-			QPushButton:pressed { background-color: #0C4A73; }
-		""")
-		_save_btn.clicked.connect(self._on_save)
-		bot_layout.addWidget(_save_btn, alignment=Qt.AlignmentFlag.AlignRight)
+		save_row = QHBoxLayout()
+		save_row.setContentsMargins(0, 6, 0, 0)
+		save_row.setSpacing(10)
+		self._saved_status_chip = QLabel("")
+		self._saved_status_chip.setObjectName("pageStatusChip")
+		save_row.addWidget(self._saved_status_chip)
+		save_row.addStretch(1)
+		self._save_btn = QPushButton("Simpan Jacobian")
+		self._save_btn.setObjectName("constraintSaveButton")
+		self._save_btn.setMinimumSize(150, 42)
+		self._save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+		self._save_btn.setEnabled(False)
+		self._save_btn.setToolTip("Pilih sel di grid 3D untuk diperturb sebelum menyimpan.")
+		self._save_btn.clicked.connect(self._on_save)
+		save_row.addWidget(self._save_btn)
+		bot_layout.addLayout(save_row)
 
 		right_layout.addWidget(bottom)
 
@@ -857,10 +857,26 @@ class JacobianPage(QWidget):
 		self._on_input_changed()
 
 	def _update_saved_deltas_display_from_config(self, pert: PerturbationConfig) -> None:
-		if not self.project_config or not pert or pert.perturbed_cell_id == 0 or pert.perturbed_cell_id != self._perturbed_cell:
+		confirmed = bool(
+			self.project_config
+			and self.project_config.constraints.perturbation_confirmed
+			and pert
+			and pert.perturbed_cell_id != 0
+		)
+		if confirmed:
+			self._saved_status_chip.setText(f"Aktif untuk Run: Cell {pert.perturbed_cell_id}")
+			self._saved_status_chip.setProperty("chipKind", "ok")
+		else:
+			self._saved_status_chip.setText("Belum Disimpan")
+			self._saved_status_chip.setProperty("chipKind", "empty")
+		self._saved_status_chip.style().unpolish(self._saved_status_chip)
+		self._saved_status_chip.style().polish(self._saved_status_chip)
+
+		is_saved = confirmed and pert.perturbed_cell_id == self._perturbed_cell
+		if not is_saved:
 			self._preview_card.hide()
 			return
-		
+
 		self._preview_P.setText(f" dP  = {pert.delta_P:,.4f} psia")
 		self._preview_Sw.setText(f" dSw = {pert.delta_Sw:.6f} (fraksi)")
 		self._preview_Sg.setText(f" dSg = {pert.delta_Sg:.6f} (fraksi)")
@@ -919,6 +935,8 @@ class JacobianPage(QWidget):
 	def _refresh_view(self) -> None:
 		if self.project_config is None:
 			return
+
+		self._save_btn.setEnabled(self._perturbed_cell is not None)
 
 		gs = self.project_config.grid_spec
 		nx, ny, nz = gs.nx, gs.ny, getattr(gs, "nz", 1)
@@ -982,51 +1000,16 @@ class JacobianPage(QWidget):
 
 		if self._perturbed_cell is None:
 			self._cell_info_banner.hide()
-			ph_outer = QWidget()
-			ph_outer.setStyleSheet("background: transparent;")
-			ph_outer_lay = QVBoxLayout(ph_outer)
-			ph_outer_lay.setContentsMargins(12, 40, 12, 40)
-			ph_outer_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-			ph_w = QWidget()
-			ph_w.setObjectName("placeholderCard")
-			ph_w.setStyleSheet("""
-				QWidget#placeholderCard {
-					background-color: #ffffff;
-					border: 2px dashed #D7DEE7;
-					border-radius: 12px;
-				}
-			""")
-			ph_w.setFixedWidth(280)
-			ph_lay = QVBoxLayout(ph_w)
-			ph_lay.setContentsMargins(20, 28, 20, 28)
-			ph_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_lay.setSpacing(14)
-
-			ph_icon = QLabel("🎯")
-			ph_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_icon.setStyleSheet("font-size: 26pt; background: transparent;")
-			ph_lay.addWidget(ph_icon)
-
-			ph_title = QLabel("Pilih Sel Perturbasi")
-			ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_title.setStyleSheet(
-				"font-size: 11pt; font-weight: 700; color: #0F5C8E; background: transparent;"
-			)
-			ph_lay.addWidget(ph_title)
-
-			ph_sub = QLabel(
+			ph = QLabel(
 				"Klik sel pada grid 3D untuk memilih titik perturbasi. "
-				"Semua 3 variabel (P, Sw, Sg) akan diperturb serentak "
-				"pada sel yang dipilih."
+				"Semua 3 variabel (P, Sw, Sg) akan diperturb serentak pada sel yang dipilih."
 			)
-			ph_sub.setWordWrap(True)
-			ph_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			ph_sub.setStyleSheet("font-size: 8.5pt; color: #5B6676; background: transparent; line-height: 1.4;")
-			ph_lay.addWidget(ph_sub)
-
-			ph_outer_lay.addWidget(ph_w)
-			self.scroll_layout.insertWidget(0, ph_outer)
+			ph.setWordWrap(True)
+			ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+			ph.setStyleSheet(
+				"color: #5B6676; font-size: 10pt; font-style: italic; padding: 40px;"
+			)
+			self.scroll_layout.insertWidget(0, ph)
 			return
 
 		# Populate cell info banner
@@ -1198,29 +1181,9 @@ class JacobianPage(QWidget):
 		title_row.addWidget(self._badge("SELF", "#DCEAF7", "#0F5C8E", "#A9CCE5"))
 		lay.addLayout(title_row)
 
-		# Equation hint
-		eq_lbl = QLabel(f"∂F_{cell_id} / {var_sym}_{cell_id}  ·  Accumulation term")
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
-		lay.addWidget(eq_lbl)
-
-		# Variable sensitivity note
-		var_note = {
-			"P":  "Compressibility + pore-volume + relative perm (P-dependent)",
-			"Sw": "Water + oil saturation functions  (∂krw/∂Sw, ∂kro/∂Sw)",
-			"Sg": "Gas + oil saturation functions   (∂krg/∂Sg, ∂kro/∂Sg)",
-		}[entry["var"]]
-		note_lbl = QLabel(var_note)
-		note_lbl.setStyleSheet("font-size: 8pt; color: #0F5C8E;")
-		note_lbl.setWordWrap(True)
-		lay.addWidget(note_lbl)
-
 		if well:
-			sep = QFrame()
-			sep.setFrameShape(QFrame.Shape.HLine)
-			sep.setStyleSheet("background-color: #DCEAF7; border: none; max-height: 1px;")
-			lay.addWidget(sep)
-			wtype  = "Production" if well.well_type == "production" else "Injection"
-			w_lbl  = QLabel(f"+ Well Term: {well.name}  [{wtype}]  —  modifies diagonal")
+			wtype = "Production" if well.well_type == "production" else "Injection"
+			w_lbl = QLabel(f"Sumur: {well.name}  ({wtype})")
 			w_lbl.setStyleSheet("font-size: 8pt; color: #0F5C8E; font-weight: 600;")
 			lay.addWidget(w_lbl)
 
@@ -1232,9 +1195,6 @@ class JacobianPage(QWidget):
 		cell_id = entry["cell_id"]
 		ix, iy  = entry["coords"]
 		direc   = entry["direction"]
-		trans   = entry["transmissibility"]
-		area    = entry["area"]
-		dist    = entry["distance"]
 		well    = entry["well"]
 		arrow   = _DIR_ARROW.get(direc, "→")
 
@@ -1248,48 +1208,11 @@ class JacobianPage(QWidget):
 		title_row.addWidget(self._badge(direc, "#DCEEE3", "#1F4D38", "#2D6A4F"))
 		lay.addLayout(title_row)
 
-		# Equation hint
-		eq_lbl = QLabel(
-			f"∂F_pert / {var_sym}_{cell_id}  ·  Inter-cell flux  "
-			f"(Darcy)"
-		)
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
-		lay.addWidget(eq_lbl)
-
-		# Transmissibility row
-		prop_row = QHBoxLayout()
-		prop_row.setSpacing(16)
-
-		def _kv(k: str, v: str) -> QLabel:
-			lbl = QLabel(f"<b>{k}</b>  {v}")
-			lbl.setStyleSheet("font-size: 8pt; color: #1F2937;")
-			return lbl
-
-		prop_row.addWidget(_kv("T =", f"{trans:,.4f}"))
-		prop_row.addWidget(_kv("A =", f"{area:,.1f} ft²"))
-		prop_row.addWidget(_kv("d =", f"{dist:,.1f} ft"))
-		prop_row.addStretch(1)
-		lay.addLayout(prop_row)
-
-		# Variable sensitivity
-		var_flux = {
-			"P":  "Pressure-gradient driven — ∂T·(P_i − P_j)/∂P",
-			"Sw": "Water relative perm — ∂(krw·T·ΔP)/∂Sw",
-			"Sg": "Gas relative perm  — ∂(krg·T·ΔP)/∂Sg",
-		}[entry["var"]]
-		flux_lbl = QLabel(var_flux)
-		flux_lbl.setStyleSheet("font-size: 8pt; color: #2D6A4F; font-style: italic;")
-		lay.addWidget(flux_lbl)
-
-		# If neighbor cell has a well: annotate
 		if well:
 			w_note = QLabel(
-				f"  Adjacent well: {well.name}  "
-				f"({'Prod' if well.well_type == 'production' else 'Inj'}) — "
-				f"potential cross-coupling via pressure drawdown"
+				f"Sumur tetangga: {well.name}  ({'Prod' if well.well_type == 'production' else 'Inj'})"
 			)
-			w_note.setStyleSheet("font-size: 7.5pt; color: #A86A15; font-weight: 600;")
-			w_note.setWordWrap(True)
+			w_note.setStyleSheet("font-size: 8pt; color: #A86A15; font-weight: 600;")
 			lay.addWidget(w_note)
 
 		return card
@@ -1298,7 +1221,6 @@ class JacobianPage(QWidget):
 		card, lay = self._make_card("#A86A15")  # warning border
 
 		well    = entry["well"]
-		cell_id = entry["cell_id"]
 		is_prod = well.well_type == "production"
 
 		title_row = QHBoxLayout()
@@ -1312,19 +1234,10 @@ class JacobianPage(QWidget):
 		title_row.addWidget(self._badge(wtype_badge, "#F7E9D2", "#6B4710", "#A86A15"))
 		lay.addLayout(title_row)
 
-		# Equation
-		eq = (
-			f"∂Q_{cell_id} / {var_sym}_{cell_id}  ·  Well control equation"
-		)
-		eq_lbl = QLabel(eq)
-		eq_lbl.setStyleSheet("font-size: 8pt; color: #5B6676; font-family: monospace;")
-		lay.addWidget(eq_lbl)
-
 		# Well properties
 		model_display = {
 			"simple_flowrate": "Simple Flowrate",
 			"peaceman": "Peaceman (analytical WI)",
-			"well_model_3": "Well Model #3",
 		}.get(well.well_model, well.well_model)
 
 		prop_row = QHBoxLayout()
@@ -1336,19 +1249,11 @@ class JacobianPage(QWidget):
 			return lbl
 
 		prop_row.addWidget(_kv("Model:", model_display))
-		prop_row.addWidget(_kv("Q =", f"{well.flowrate:,.1f} STB/day"))
+		if well.well_model == "peaceman":
+			prop_row.addWidget(_kv("BHP =", f"{well.bhp:,.1f} psia"))
+		else:
+			prop_row.addWidget(_kv("Q =", f"{well.flowrate:,.1f} STB/day"))
 		prop_row.addStretch(1)
 		lay.addLayout(prop_row)
-
-		# Variable sensitivity for well term
-		var_well = {
-			"P":  "PI·(Pwf − P_cell)  →  ∂Q/∂P = −PI  [mobility-weighted]",
-			"Sw": "∂(λw·PI·ΔP)/∂Sw  —  changes water mobility",
-			"Sg": "∂(λg·PI·ΔP)/∂Sg  —  changes gas mobility",
-		}[entry["var"]]
-		wvar_lbl = QLabel(var_well)
-		wvar_lbl.setStyleSheet("font-size: 8pt; color: #A86A15; font-style: italic;")
-		wvar_lbl.setWordWrap(True)
-		lay.addWidget(wvar_lbl)
 
 		return card

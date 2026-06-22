@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
 	QFrame,
 	QHBoxLayout,
@@ -28,17 +27,11 @@ class DashboardPage(QWidget):
 		_header_row = QHBoxLayout(self._header)
 		_header_row.setContentsMargins(20, 14, 20, 14)
 
-		self._project_title = QLabel("CoreReservoir", self._header)
+		self._project_title = QLabel("CERITANYA INI SIMULATOR", self._header)
 		self._project_title.setObjectName("dashTitle")
-
-		self._status_badge = QLabel("READY", self._header)
-		self._status_badge.setObjectName("dashBadgeReady")
-		self._status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-		self._status_badge.setFixedWidth(110)
 
 		_header_row.addWidget(self._project_title)
 		_header_row.addStretch(1)
-		_header_row.addWidget(self._status_badge)
 
 		# ── Main Scroll Container ────────────────────────────────────────────
 		scroll = QScrollArea(self)
@@ -53,7 +46,7 @@ class DashboardPage(QWidget):
 
 		# ── Unified Report Canvas (Flat, clean canvas layout) ─────────────────
 		self.canvas = QFrame(content)
-		self.canvas.setObjectName("resultCard")
+		self.canvas.setObjectName("dashCanvasCard")
 		canvas_lay = QVBoxLayout(self.canvas)
 		canvas_lay.setContentsMargins(24, 24, 24, 24)
 		canvas_lay.setSpacing(20)
@@ -190,19 +183,11 @@ class DashboardPage(QWidget):
 			item_status.setForeground(QBrush(QColor("#B2413F")))
 			item_issues = QTableWidgetItem(" • " + "; ".join(validation_errors))
 			item_issues.setForeground(QBrush(QColor("#B2413F")))
-			self._status_badge.setText("INCOMPLETE")
-			self._status_badge.setObjectName("dashBadgeError")
 		else:
 			item_status = QTableWidgetItem("Lolos Validasi (Siap Jalan)")
 			item_status.setForeground(QBrush(QColor("#2D6A4F")))
 			item_issues = QTableWidgetItem("Semua persyaratan terpenuhi, tidak ada error.")
 			item_issues.setForeground(QBrush(QColor("#5B6676")))
-			self._status_badge.setText("READY")
-			self._status_badge.setObjectName("dashBadgeReady")
 
 		self.table_valid.setItem(0, 1, item_status)
 		self.table_valid.setItem(1, 1, item_issues)
-
-		# Force badge style refresh
-		self._status_badge.style().unpolish(self._status_badge)
-		self._status_badge.style().polish(self._status_badge)

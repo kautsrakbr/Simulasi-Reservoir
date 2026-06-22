@@ -11,7 +11,7 @@ from engine.properties.relperm import interpolate_relperm
 
 
 @dataclass(slots=True)
-class _CellPhaseProperties:
+class CellPhaseProperties:
 	bo: float
 	bw: float
 	bg: float
@@ -23,6 +23,7 @@ class _CellPhaseProperties:
 	density_gas: float
 	pcow: float
 	pcgw: float
+	rso: float
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -70,13 +71,13 @@ def _evaluate_rock(
 	return interpolate_relperm(table, saturation)
 
 
-def _evaluate_cell_properties(
+def evaluate_cell_properties(
 	cell_index: int,
 	state: ReservoirState,
 	reference_data: ReferenceData | dict[str, float] | object,
 	pvt_tables: dict[str, list[tuple[float, float]]],
 	rock_tables: dict[str, list[tuple[float, float]]],
-) -> _CellPhaseProperties:
+) -> CellPhaseProperties:
 	pressure = state.pressure[cell_index]
 	sw = _clamp(state.sw[cell_index], 0.0, 1.0)
 	sg = _clamp(state.sg[cell_index], 0.0, 1.0)
@@ -88,6 +89,7 @@ def _evaluate_cell_properties(
 	mu_o = _evaluate_pvt("mu_o", pressure, pvt_tables, 2.0)
 	mu_w = _evaluate_pvt("mu_w", pressure, pvt_tables, 1.0)
 	mu_g = _evaluate_pvt("mu_g", pressure, pvt_tables, 0.02)
+	rso = _evaluate_pvt("rso", pressure, pvt_tables, 0.0)
 
 	kro = _evaluate_rock("kro", sw, rock_tables, max(0.0, 1.0 - sw))
 	krw = _evaluate_rock("krw", sw, rock_tables, sw)
@@ -107,7 +109,7 @@ def _evaluate_cell_properties(
 	mobility_water = _safe_div(krw, mu_w, 0.0)
 	mobility_gas = _safe_div(krg, mu_g, 0.0)
 
-	return _CellPhaseProperties(
+	return CellPhaseProperties(
 		bo=bo,
 		bw=bw,
 		bg=bg,
@@ -119,14 +121,15 @@ def _evaluate_cell_properties(
 		density_gas=density_gas,
 		pcow=pcow,
 		pcgw=pcgw,
+		rso=rso,
 	)
 
 
 def _build_upwind_props(
 	phase: str,
 	potential: float,
-	from_props: _CellPhaseProperties,
-	to_props: _CellPhaseProperties,
+	from_props: CellPhaseProperties,
+	to_props: CellPhaseProperties,
 ) -> dict[str, float]:
 	upstream = from_props if potential <= 0.0 else to_props
 	if phase == "oil":
@@ -211,7 +214,7 @@ def compute_phase_connection_fluxes(
 	rock_tables: dict[str, list[tuple[float, float]]],
 ) -> dict[str, list[float]]:
 	cell_properties = [
-		_evaluate_cell_properties(index, state, reference_data, pvt_tables, rock_tables)
+		evaluate_cell_properties(index, state, reference_data, pvt_tables, rock_tables)
 		for index, _ in enumerate(grid_model.cells)
 	]
 

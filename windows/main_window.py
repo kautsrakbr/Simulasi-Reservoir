@@ -37,6 +37,7 @@ from modules.project_service import (
 	save_project_json,
 	update_initial_conditions,
 	update_method_config,
+	update_grid_connectivity,
 	update_grid_spec,
 	update_project_metadata,
 	update_solver_config,
@@ -51,7 +52,7 @@ from windows.initial_page import InitialPage
 from windows.model_page import ModelPage
 from windows.methods_page import MethodsPage
 from windows.pvt_page import PVTPage
-from windows.results_page import ResultsPage
+from windows.validation_page import ValidationPage
 from windows.rock_page import RockPage
 from windows.run_page import RunPage
 from windows.solver_page import SolverPage
@@ -177,10 +178,12 @@ class _InputConstraintPage(QWidget):
 class MainWindow(QMainWindow):
 	def __init__(self) -> None:
 		super().__init__()
-		self.setWindowTitle("CoreReservoir")
+		self.setWindowTitle("CERITANYA INI SIMULATOR")
 		self.resize(1280, 720)
-		self.project_config = create_empty_project("CoreReservoir")
+		self.project_config = create_empty_project("CERITANYA INI SIMULATOR")
 		self.run_result = None
+		self.newton_raphson_result = None
+		self.quasi_newton_result = None
 		self.project_file_path: Path | None = None
 		self._nav_buttons: list[QPushButton] = []
 
@@ -198,7 +201,7 @@ class MainWindow(QMainWindow):
 		top_bar_layout.setSpacing(20)
 
 		# Logo label
-		logo_lbl = QLabel("CORERESERVOIR ENTERPRISE", self._top_bar)
+		logo_lbl = QLabel("CERITANYA INI SIMULATOR", self._top_bar)
 		logo_lbl.setObjectName("topLogo")
 		top_bar_layout.addWidget(logo_lbl)
 		top_bar_layout.addStretch(1)
@@ -273,7 +276,7 @@ class MainWindow(QMainWindow):
 
 		self._switch_to_page(0)
 		self._refresh_pages()
-		self.statusBar().showMessage("CoreReservoir siap.")
+		self.statusBar().showMessage("CERITANYA INI SIMULATOR siap.")
 
 	# ── Sidebar collapse/expand ──────────────────────────────────────────────
 	def _toggle_sidebar(self) -> None:
@@ -290,10 +293,15 @@ class MainWindow(QMainWindow):
 			self._splitter.setSizes([48, self.width() - 48])
 
 	# ── Page switching ────────────────────────────────────────────────────────
-	def _switch_to_page(self, index: int) -> None:
+	def _switch_to_page(self, index: int, active_btn: QPushButton | None = None) -> None:
 		self._page_stack.setCurrentIndex(index)
-		for i, btn in enumerate(self._nav_buttons):
-			btn.setChecked(i == index)
+		btn = active_btn or self._page_default_btn.get(index)
+		for b in self._nav_buttons:
+			b.setChecked(b is btn)
+
+	def _switch_to_validation(self, group_index: int, active_btn: QPushButton) -> None:
+		self._switch_to_page(4, active_btn)
+		self.validation_page.show_group(group_index)
 
 	def _configure_commands(self) -> None:
 		project_menu = self.menuBar().addMenu("Project")
@@ -331,8 +339,10 @@ class MainWindow(QMainWindow):
 		self.input_constraints_page.switch_to_tab(0)
 
 	def _new_project(self) -> None:
-		self.project_config = create_empty_project("CoreReservoir")
+		self.project_config = create_empty_project("CERITANYA INI SIMULATOR")
 		self.run_result = None
+		self.newton_raphson_result = None
+		self.quasi_newton_result = None
 		self.project_file_path = None
 		self._refresh_pages()
 		self.statusBar().showMessage("Project baru dibuat.", 5000)
@@ -355,6 +365,8 @@ class MainWindow(QMainWindow):
 
 		self.project_file_path = Path(file_path)
 		self.run_result = None
+		self.newton_raphson_result = None
+		self.quasi_newton_result = None
 		self._refresh_pages()
 		self.statusBar().showMessage(f"Project dibuka: {self.project_file_path.name}", 5000)
 
@@ -396,7 +408,7 @@ class MainWindow(QMainWindow):
 		self.rock_page = RockPage()
 		self.initial_page = InitialPage()
 		self.run_page = RunPage()
-		self.results_page = ResultsPage()
+		self.validation_page = ValidationPage()
 		self.connectivity_3d_page = Connectivity3DPage()
 		self.well_placement_page = WellPlacementPage()
 		self.jacobian_page = JacobianPage()
@@ -445,7 +457,7 @@ class MainWindow(QMainWindow):
 		self._page_stack.addWidget(self.properties_page)         # index 1
 		self._page_stack.addWidget(self.configuration_page)      # index 2
 		self._page_stack.addWidget(self.run_page)                # index 3
-		self._page_stack.addWidget(self.results_page)            # index 4
+		self._page_stack.addWidget(self.validation_page)          # index 4
 		self._page_stack.addWidget(self.setup_page)               # index 5
 
 		# Group 1: Inputs
@@ -456,29 +468,57 @@ class MainWindow(QMainWindow):
 		_sim_section = _NavSection("Simulation", self._nav_inner)
 		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _sim_section)
 
+		# Group 3: Validation
+		_validation_section = _NavSection("Validation", self._nav_inner)
+		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _validation_section)
+
 		# Sidebar navigation items
 		self.btn_input = _inputs_section.add_item("Configuration")
 		self.btn_setup = _inputs_section.add_item("Setup")
 		self.btn_properties = _inputs_section.add_item("Properties")
 		self.btn_configuration = _inputs_section.add_item("Constraints")
 		self.btn_run = _sim_section.add_item("Simulation Run")
-		self.btn_results = _sim_section.add_item("Analytics & Results")
+		# Validation groups each get their own sidebar item; all share page index 4
+		# (self.validation_page) but select a different internal group via show_group().
+		self.btn_val_summary = _validation_section.add_item("Summary")
+		self.btn_val_residual = _validation_section.add_item("Residual Check")
+		self.btn_val_grid = _validation_section.add_item("Grid Connection")
+		self.btn_val_jacobian = _validation_section.add_item("Jacobian")
+		self.btn_val_comparison = _validation_section.add_item("Newton Comparison")
 
 		# Wire the navigation buttons
 		self.btn_input.clicked.connect(lambda _=None: self._switch_to_page(0))
 		self.btn_properties.clicked.connect(lambda _=None: self._switch_to_page(1))
 		self.btn_configuration.clicked.connect(lambda _=None: self._switch_to_page(2))
 		self.btn_run.clicked.connect(lambda _=None: self._switch_to_page(3))
-		self.btn_results.clicked.connect(lambda _=None: self._switch_to_page(4))
+		self.btn_val_summary.clicked.connect(lambda _=None: self._switch_to_validation(0, self.btn_val_summary))
+		self.btn_val_residual.clicked.connect(lambda _=None: self._switch_to_validation(1, self.btn_val_residual))
+		self.btn_val_grid.clicked.connect(lambda _=None: self._switch_to_validation(2, self.btn_val_grid))
+		self.btn_val_jacobian.clicked.connect(lambda _=None: self._switch_to_validation(3, self.btn_val_jacobian))
+		self.btn_val_comparison.clicked.connect(lambda _=None: self._switch_to_validation(4, self.btn_val_comparison))
 		self.btn_setup.clicked.connect(lambda _=None: self._switch_to_page(5))
 		self._nav_buttons.extend([
 			self.btn_input,
 			self.btn_properties,
 			self.btn_configuration,
 			self.btn_run,
-			self.btn_results,
+			self.btn_val_summary,
+			self.btn_val_residual,
+			self.btn_val_grid,
+			self.btn_val_jacobian,
+			self.btn_val_comparison,
 			self.btn_setup,
 		])
+		# Default button per page index, used by _switch_to_page() when no
+		# explicit active_btn is passed (e.g. goToRunRequested -> page 3).
+		# Page 4 (Validation) has no single default since 5 buttons share it.
+		self._page_default_btn = {
+			0: self.btn_input,
+			1: self.btn_properties,
+			2: self.btn_configuration,
+			3: self.btn_run,
+			5: self.btn_setup,
+		}
 
 		# Mark first nav btn active
 		if self._nav_buttons:
@@ -497,10 +537,15 @@ class MainWindow(QMainWindow):
 		self.initial_page.initialConditionsChanged.connect(self._handle_initial_conditions_changed)
 		self.run_page.runRequested.connect(self._start_run_simulation)
 		self.run_page.cancelRequested.connect(self._cancel_run_simulation)
-		self.results_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
+		self.validation_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
 		self.well_placement_page.wellsChanged.connect(self._handle_wells_changed)
 		self.jacobian_page.perturbationChanged.connect(self._handle_perturbation_changed)
 		self.methods_page.methodSaved.connect(self._handle_method_saved)
+		self.connectivity_3d_page.connectivityChanged.connect(self._handle_connectivity_changed)
+
+	def _handle_connectivity_changed(self, points: int) -> None:
+		update_grid_connectivity(self.project_config, points)
+		self._refresh_pages()
 
 	def _handle_wells_changed(self, wells: list) -> None:
 		update_wells(self.project_config, wells)
@@ -655,6 +700,15 @@ class MainWindow(QMainWindow):
 		self._refresh_pages()
 
 	def _start_run_simulation(self) -> None:
+		validation_errors = validate_project(self.project_config)
+		if validation_errors:
+			QMessageBox.warning(
+				self,
+				"Run Simulation",
+				"Simulasi belum bisa dijalankan:\n\n- " + "\n- ".join(validation_errors),
+			)
+			return
+
 		self._run_thread = QThread(self)
 		self._run_worker = RunWorker(self.project_config)
 		self._run_worker.moveToThread(self._run_thread)
@@ -687,6 +741,10 @@ class MainWindow(QMainWindow):
 
 	def _on_run_finished(self, run_result: object) -> None:
 		self.run_result = run_result
+		if self.project_config.methods.active_method == "quasi_newton":
+			self.quasi_newton_result = run_result
+		else:
+			self.newton_raphson_result = run_result
 		step_count = len(run_result.steps)
 		warning_count = len(run_result.warnings)
 		converged_count = sum(1 for step in run_result.steps if step.summary.converged)
@@ -705,8 +763,9 @@ class MainWindow(QMainWindow):
 		self.run_page.set_run_feedback(msg)
 		mark_project_clean(self.project_config)
 		self._refresh_pages()
-		self.results_page.set_run_result(run_result)
-		self._switch_to_page(4)  # go to Results
+		self.validation_page.set_run_result(run_result)
+		self.validation_page.set_comparison_results(self.newton_raphson_result, self.quasi_newton_result)
+		self._switch_to_validation(0, self.btn_val_summary)  # go to Validation > Summary
 		self.statusBar().showMessage(msg, 8000)
 
 	def _on_run_failed(self, error: str) -> None:
@@ -726,15 +785,16 @@ class MainWindow(QMainWindow):
 		self.methods_page.set_project(self.project_config)
 		self.initial_page.set_project(self.project_config)
 		self.run_page.set_project_state(self.project_config, validation_errors)
-		self.results_page.set_project(self.project_config)
-		self.results_page.set_run_result(self.run_result)
+		self.validation_page.set_project(self.project_config)
+		self.validation_page.set_run_result(self.run_result)
+		self.validation_page.set_comparison_results(self.newton_raphson_result, self.quasi_newton_result)
 		self.connectivity_3d_page.set_project(self.project_config)
 		self.well_placement_page.set_project(self.project_config)
 		self.jacobian_page.set_project(self.project_config)
 		self._update_window_caption()
 
 	def _update_window_caption(self) -> None:
-		base_title = "CoreReservoir"
+		base_title = "CERITANYA INI SIMULATOR"
 		if self.project_file_path is not None:
 			base_title = f"{base_title} - {self.project_file_path.name}"
 		if self.project_config.is_dirty:

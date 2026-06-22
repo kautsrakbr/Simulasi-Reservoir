@@ -8,7 +8,7 @@ from engine.io.project_loader import load_project_json as io_load_project_json
 from engine.io.project_writer import write_project_json
 
 
-def create_empty_project(name: str = "CoreReservoir") -> ProjectConfig:
+def create_empty_project(name: str = "CERITANYA INI SIMULATOR") -> ProjectConfig:
 	project = ProjectConfig(name=name)
 	project.description = "Desktop reservoir simulation workspace."
 	project.reference_data.reference_depth = 6500.0
@@ -78,6 +78,13 @@ def update_grid_spec(
 	project_config.grid_spec.dx = dx
 	project_config.grid_spec.dy = dy
 	project_config.grid_spec.dz = dz
+	project_config.is_dirty = True
+	return project_config
+
+
+def update_grid_connectivity(project_config: ProjectConfig, connectivity: int) -> ProjectConfig:
+	project_config.grid_spec.connectivity = connectivity
+	project_config.constraints.grid_confirmed = True
 	project_config.is_dirty = True
 	return project_config
 
@@ -444,18 +451,21 @@ def update_perturbation_config(
 	project_config: ProjectConfig, pert: PerturbationConfig
 ) -> ProjectConfig:
 	project_config.perturbation = pert
+	project_config.constraints.perturbation_confirmed = pert.perturbed_cell_id > 0
 	project_config.is_dirty = True
 	return project_config
 
 
 def update_method_config(project_config: ProjectConfig, method_config: MethodConfig) -> ProjectConfig:
 	project_config.methods = method_config
+	project_config.constraints.methods_confirmed = True
 	project_config.is_dirty = True
 	return project_config
 
 
 def update_wells(project_config: ProjectConfig, wells: list[WellConfig]) -> ProjectConfig:
 	project_config.wells = [w for w in wells if isinstance(w, WellConfig)]
+	project_config.constraints.wells_confirmed = True
 	project_config.is_dirty = True
 	return project_config
 

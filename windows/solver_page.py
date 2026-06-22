@@ -276,7 +276,7 @@ class SolverPage(QWidget):
 		self.solver_preset_apply_btn = QPushButton("Terapkan")
 		self.solver_preset_apply_btn.setObjectName("btnSecondary")
 		self.solver_preset_apply_btn.setToolTip(
-			"Menimpa nilai Faktor Pertumbuhan/Penyusutan dt dan Maks Retry di bawah\n"
+			"Menimpa nilai Timestep Growth dt/Timestep Cut dt dan Maks Retry di bawah\n"
 			"dengan nilai bawaan preset yang dipilih."
 		)
 		status_row.addWidget(status_label)
@@ -289,8 +289,8 @@ class SolverPage(QWidget):
 		self.timestep_shrink_factor_input = _ratio_spin(0.05, 0.95)
 		self.max_step_retries_input = _int_spin(0, 100)
 		lay_preset.addLayout(_tile_grid([
-			("Faktor Pertumbuhan dt", enable_precise_edit(self, self.timestep_growth_factor_input, "Faktor Pertumbuhan dt", self._spin_input_blockers)),
-			("Faktor Penyusutan dt", enable_precise_edit(self, self.timestep_shrink_factor_input, "Faktor Penyusutan dt", self._spin_input_blockers)),
+			("Timestep Growth dt", enable_precise_edit(self, self.timestep_growth_factor_input, "Timestep Growth dt", self._spin_input_blockers)),
+			("Timestep Cut dt", enable_precise_edit(self, self.timestep_shrink_factor_input, "Timestep Cut dt", self._spin_input_blockers)),
 			("Maks Retry Timestep", enable_precise_edit(self, self.max_step_retries_input, "Maks Retry Timestep", self._spin_input_blockers)),
 		], ncols=3))
 		col.addWidget(card_preset)

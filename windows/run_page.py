@@ -135,10 +135,12 @@ class RunPage(QWidget):
 			item_status = QTableWidgetItem("Blocked (Ada Hambatan)")
 			item_status.setForeground(QBrush(QColor("#B2413F")))
 			self._run_btn.setEnabled(False)
+			self._run_btn.setToolTip("Belum bisa run:\n- " + "\n- ".join(validation_errors))
 		else:
 			item_status = QTableWidgetItem("Ready")
 			item_status.setForeground(QBrush(QColor("#2D6A4F")))
 			self._run_btn.setEnabled(True)
+			self._run_btn.setToolTip("")
 		self.table_summary.setItem(0, 3, item_status)
 
 	def set_running(self, running: bool) -> None:

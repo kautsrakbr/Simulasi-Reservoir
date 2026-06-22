@@ -10,6 +10,22 @@ def validate_project(project_config: ProjectConfig) -> list[str]:
 	errors.extend(validate_pvt_inputs(project_config))
 	errors.extend(validate_rock_inputs(project_config))
 	errors.extend(validate_initial_state(project_config))
+	errors.extend(validate_run_constraints(project_config))
+	return errors
+
+
+def validate_run_constraints(project_config: ProjectConfig) -> list[str]:
+	"""The 4 run-readiness constraints: grid connectivity, wells, perturbation cell, Newton method."""
+	errors: list[str] = []
+	constraints = project_config.constraints
+	if not constraints.grid_confirmed:
+		errors.append("Connectivity grid (5/9/11-point) belum disimpan di tab Connectivity 3D.")
+	if not constraints.wells_confirmed:
+		errors.append("Well placement belum disimpan (klik Save Changes, walau tanpa sumur).")
+	if not constraints.perturbation_confirmed or project_config.perturbation.perturbed_cell_id <= 0:
+		errors.append("Cell perturbasi Jacobian belum dipilih dan disimpan di tab Jacobian.")
+	if not constraints.methods_confirmed:
+		errors.append("Metode Newton belum dipilih dan disimpan di tab Methods.")
 	return errors
 
 
