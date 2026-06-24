@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import Qt, QEasingCurve, QPoint, QPointF, QRectF, QSize, QVariantAnimation, Signal
 from PySide6.QtGui import (
 	QBrush,
@@ -552,7 +554,7 @@ class WellPlacementPage(QWidget):
 		# ── Bottom controls ────────────────────────────────────────────────────
 		bottom = QWidget()
 		bottom.setObjectName("bottomPanel")
-		bottom.setMinimumHeight(232)
+		bottom.setMinimumHeight(214)
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
@@ -608,6 +610,11 @@ class WellPlacementPage(QWidget):
 		self.type_group.addButton(self.btn_inj)
 		self.type_group.setExclusive(True)
 		self.btn_prod.setChecked(True)
+		# buttonClicked only fires on a real user click (never on the
+		# programmatic setChecked() used to mirror the selected well's
+		# state), so this safely doubles the toggle as a quick editor for
+		# whichever well is currently selected.
+		self.type_group.buttonClicked.connect(self._on_well_type_clicked)
 		bot_layout.addWidget(type_seg)
 
 		# Well model
@@ -641,13 +648,14 @@ class WellPlacementPage(QWidget):
 		self.model_group.addButton(self.btn_peaceman)
 		self.model_group.setExclusive(True)
 		self.btn_simple.setChecked(True)
+		self.model_group.buttonClicked.connect(self._on_well_model_clicked)
 
 		model_row = QHBoxLayout()
 		model_row.setSpacing(10)
 		model_row.addWidget(model_seg, 1)
 		self.btn_save = QPushButton("Simpan")
 		self.btn_save.setObjectName("constraintSaveButton")
-		self.btn_save.setMinimumSize(118, 46)
+		self.btn_save.setMinimumSize(112, 40)
 		self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
 		self.btn_save.clicked.connect(self._on_save_changes)
 		model_row.addWidget(self.btn_save)
@@ -671,7 +679,11 @@ class WellPlacementPage(QWidget):
 		self._well3d._nx = gs.nx
 		self._well3d._ny = gs.ny
 		self._well3d._nz = getattr(gs, "nz", 1)
-		self._pending_wells = list(project_config.wells)
+		# Independent copies: _pending_wells must not share WellConfig
+		# instances with project_config.wells, otherwise in-place edits
+		# (flowrate, type switch, ...) mutate the "saved" wells too and
+		# the dirty-check in _is_wells_dirty() can never see a difference.
+		self._pending_wells = [replace(w) for w in project_config.wells]
 		self._selected_well_cell = None
 		self._refresh_well_view()
 
@@ -694,7 +706,11 @@ class WellPlacementPage(QWidget):
 	def _is_wells_dirty(self) -> bool:
 		if self.project_config is None:
 			return True
-		key = lambda w: (w.cell_id, w.well_type, w.well_model, w.name)
+		# Covers every field a user can change on an existing well (type,
+		# model switch, flowrate, BHP, wellbore radius) — comparing only
+		# cell_id/type/model/name missed flowrate/BHP/radius edits, leaving
+		# Simpan disabled after a real change.
+		key = lambda w: (w.cell_id, w.well_type, w.well_model, w.name, w.flowrate, w.bhp, w.wellbore_radius)
 		saved = sorted(key(w) for w in self.project_config.wells)
 		pending = sorted(key(w) for w in self._pending_wells)
 		return saved != pending
@@ -815,6 +831,31 @@ class WellPlacementPage(QWidget):
 				break
 		self._refresh_well_view()
 
+	def _switch_well_model(self, cell_id: int, new_model: str) -> None:
+		for w in self._pending_wells:
+			if w.cell_id == cell_id:
+				w.well_model = new_model
+				break
+		self._refresh_well_view()
+
+	def _on_well_type_clicked(self) -> None:
+		"""Well Type toggle doubles as a quick editor for the selected well."""
+		if self._selected_well_cell is None:
+			return
+		new_type = "production" if self.btn_prod.isChecked() else "injection"
+		well = next((w for w in self._pending_wells if w.cell_id == self._selected_well_cell), None)
+		if well is not None and well.well_type != new_type:
+			self._switch_well_type(self._selected_well_cell, new_type)
+
+	def _on_well_model_clicked(self) -> None:
+		"""Well Model toggle doubles as a quick editor for the selected well."""
+		if self._selected_well_cell is None:
+			return
+		new_model = self._get_selected_model()
+		well = next((w for w in self._pending_wells if w.cell_id == self._selected_well_cell), None)
+		if well is not None and well.well_model != new_model:
+			self._switch_well_model(self._selected_well_cell, new_model)
+
 	def _show_flowrate_dialog(self, cell2d: int, well: WellConfig) -> None:
 		val, ok = QInputDialog.getDouble(
 			self,
@@ -878,6 +919,24 @@ class WellPlacementPage(QWidget):
 			return "peaceman"
 		return "simple_flowrate"
 
+	def _sync_type_model_toggles(self) -> None:
+		"""Mirror the selected well's type/model onto the toggles (without
+		firing buttonClicked) so they reflect — and stay ready to edit —
+		whichever well is currently selected."""
+		well = next((w for w in self._pending_wells if w.cell_id == self._selected_well_cell), None)
+		if well is None:
+			return
+		want_prod = well.well_type == "production"
+		want_simple = well.well_model != "peaceman"
+		for btn in (self.btn_prod, self.btn_inj, self.btn_simple, self.btn_peaceman):
+			btn.blockSignals(True)
+		self.btn_prod.setChecked(want_prod)
+		self.btn_inj.setChecked(not want_prod)
+		self.btn_simple.setChecked(want_simple)
+		self.btn_peaceman.setChecked(not want_simple)
+		for btn in (self.btn_prod, self.btn_inj, self.btn_simple, self.btn_peaceman):
+			btn.blockSignals(False)
+
 	def _on_top_layer_toggled(self, checked: bool) -> None:
 		self._well3d.set_show_top_layer(checked)
 
@@ -938,6 +997,7 @@ class WellPlacementPage(QWidget):
 		if self.project_config is None:
 			return
 		self._refresh_saved_status_chip()
+		self._sync_type_model_toggles()
 		gs = self.project_config.grid_spec
 		nx, ny, nz = gs.nx, gs.ny, getattr(gs, "nz", 1)
 

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from engine.domain.project import ProjectConfig
 from engine.domain.results import RunResult, TimeStepResult
+from engine.domain.state import ReservoirState
+from engine.grid.builder import build_grid
+from engine.physics.flux import evaluate_cell_properties as _phase_properties
+from engine.physics.wells import compute_well_index, compute_well_phase_rates
 from engine.reporting.summary import build_run_summary
 from engine.properties.pvt import interpolate_pvt
 from engine.properties.relperm import interpolate_relperm
@@ -83,6 +87,51 @@ def evaluate_cell_properties(project_config: ProjectConfig, p: float, sw: float,
 		"pcow": pcow,
 		"pcgw": pcgw,
 	}
+
+
+def get_well_rates_per_step(project_config: ProjectConfig, run_result: RunResult) -> list[dict[str, float]]:
+	"""Total field Qo/Qw/Qg (sum over all wells) at each saved timestep.
+
+	Reuses engine.physics.wells.compute_well_phase_rates / compute_well_index
+	-- the exact same per-well rate formulas the solver applies internally --
+	so the Result tab's numbers always match what actually drove the run,
+	rather than a second, possibly-diverging approximation.
+	"""
+	try:
+		grid_model = build_grid(project_config)
+	except Exception:
+		grid_model = None
+
+	rows: list[dict[str, float]] = []
+	for step_idx, step in enumerate(run_result.steps, start=1):
+		state = ReservoirState(pressure=step.pressure, sw=step.sw, sg=step.sg)
+		qo_total = qw_total = qg_total = 0.0
+		for well in project_config.wells:
+			cell_index = well.cell_id - 1
+			if cell_index < 0 or cell_index >= len(state.pressure):
+				continue
+			cell_props = _phase_properties(
+				cell_index, state, project_config.reference_data,
+				project_config.pvt_tables, project_config.rock_tables,
+			)
+			if well.well_model == "peaceman" and grid_model is not None and cell_index < len(grid_model.cells):
+				well_index = compute_well_index(grid_model.cells[cell_index], grid_model.spec, well.wellbore_radius)
+				rates = compute_well_phase_rates(
+					well, cell_props, cell_pressure=state.pressure[cell_index], well_index=well_index,
+				)
+			else:
+				rates = compute_well_phase_rates(well, cell_props)
+			qo_total += rates.oil
+			qw_total += rates.water
+			qg_total += rates.gas
+		rows.append({
+			"step": step_idx,
+			"time_days": step.summary.time_days,
+			"qo": qo_total,
+			"qw": qw_total,
+			"qg": qg_total,
+		})
+	return rows
 
 
 def get_all_cell_properties(project_config: ProjectConfig, step_result: TimeStepResult) -> list[dict[str, float]]:

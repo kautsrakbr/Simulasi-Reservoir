@@ -393,12 +393,6 @@ class JacobianPage(QWidget):
 		ci_info_lay.setContentsMargins(0, 0, 0, 0)
 		ci_info_lay.setSpacing(4)
 
-		self._ci_coords = QLabel("-")
-		self._ci_coords.setStyleSheet(
-			"font-size: 8.5pt; color: #5B6676; font-weight: 700; background: transparent;"
-		)
-		ci_info_lay.addWidget(self._ci_coords)
-
 		self._ci_conn_lbl = QLabel("-")
 		self._ci_conn_lbl.setStyleSheet(
 			"font-size: 8pt; color: #93A1B2; background: transparent;"
@@ -439,7 +433,7 @@ class JacobianPage(QWidget):
 		# ── Bottom controls ──────────────────────────────────────────────────────────
 		bottom = QWidget()
 		bottom.setObjectName("bottomPanel")
-		bottom.setMinimumHeight(320)
+		bottom.setMinimumHeight(286)
 		bottom.setStyleSheet("""
 			QWidget#bottomPanel {
 				background-color: #ffffff;
@@ -656,7 +650,7 @@ class JacobianPage(QWidget):
 		save_row.addStretch(1)
 		self._save_btn = QPushButton("Simpan Jacobian")
 		self._save_btn.setObjectName("constraintSaveButton")
-		self._save_btn.setMinimumSize(150, 42)
+		self._save_btn.setMinimumSize(132, 40)
 		self._save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 		self._save_btn.setEnabled(False)
 		self._save_btn.setToolTip("Pilih sel di grid 3D untuk diperturb sebelum menyimpan.")
@@ -1014,22 +1008,21 @@ class JacobianPage(QWidget):
 
 		# Populate cell info banner
 		perturbed_cell2d = (self._perturbed_cell - 1) % plane + 1
-		iz_sel = (self._perturbed_cell - 1) // plane
-		ix, iy = self._cell2d_coords(perturbed_cell2d, gs)
 		well_in_cell = next(
 			(w for w in self.project_config.wells if w.cell_id == perturbed_cell2d), None
 		)
 		n_conn = len(connected_set)
 		n_ent  = 1 + n_conn + (1 if well_in_cell else 0)
 		self._ci_cell_num.setText(f"Cell {self._perturbed_cell}")
-		self._ci_coords.setText(f"ix = {ix + 1}   ·   iy = {iy + 1}   ·   iz = {iz_sel + 1}")
 		self._ci_conn_lbl.setText(f"{n_conn} koneksi  ·  {n_ent} entri non-nol")
+		# Only surface the well line when there's actually a well to report —
+		# an always-visible "Tidak ada sumur" placeholder was just noise for
+		# the (common) case of a cell with no well.
 		if well_in_cell:
-			self._ci_well_lbl.setText(
-				f"● Sumur: {well_in_cell.name}  ({well_in_cell.well_type})"
-			)
+			self._ci_well_lbl.setText(f"● Sumur: {well_in_cell.name}  ({well_in_cell.well_type})")
+			self._ci_well_lbl.show()
 		else:
-			self._ci_well_lbl.setText("○ Tidak ada sumur")
+			self._ci_well_lbl.hide()
 		self._cell_info_banner.show()
 
 		# Build entries

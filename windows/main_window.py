@@ -59,6 +59,8 @@ from windows.solver_page import SolverPage
 from windows.connectivity_3d_page import Connectivity3DPage
 from windows.jacobian_page import JacobianPage
 from windows.well_placement_page import WellPlacementPage
+from windows.flowrate_result_page import FlowrateResultPage
+from windows.guide_page import GuidePage
 
 
 class _NavSection(QWidget):
@@ -160,6 +162,8 @@ class _InputConstraintPage(QWidget):
 		self._tabs.setObjectName("inputTabs")
 		self._tabs.tabBar().setObjectName("inputTabBar")
 		self._tabs.tabBar().setExpanding(False)
+		self._tabs.tabBar().setUsesScrollButtons(True)
+		self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
 		self._tabs.setDocumentMode(True)
 
 		for title, page in pages:
@@ -400,6 +404,7 @@ class MainWindow(QMainWindow):
 		self._save_project()
 
 	def _add_pages(self) -> None:
+		self.guide_page = GuidePage()
 		self.dashboard_page = DashboardPage()
 		self.model_page = ModelPage()
 		self.solver_page = SolverPage()
@@ -409,6 +414,7 @@ class MainWindow(QMainWindow):
 		self.initial_page = InitialPage()
 		self.run_page = RunPage()
 		self.validation_page = ValidationPage()
+		self.flowrate_result_page = FlowrateResultPage()
 		self.connectivity_3d_page = Connectivity3DPage()
 		self.well_placement_page = WellPlacementPage()
 		self.jacobian_page = JacobianPage()
@@ -444,6 +450,8 @@ class MainWindow(QMainWindow):
 		_config_tabs.setObjectName("inputTabs")
 		_config_tabs.tabBar().setObjectName("inputTabBar")
 		_config_tabs.tabBar().setExpanding(False)
+		_config_tabs.tabBar().setUsesScrollButtons(True)
+		_config_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
 		_config_tabs.setDocumentMode(True)
 		_config_tabs.addTab(self.connectivity_3d_page, "Connectivity 3D")
 		_config_tabs.addTab(self.well_placement_page, "Well Placement")
@@ -459,6 +467,12 @@ class MainWindow(QMainWindow):
 		self._page_stack.addWidget(self.run_page)                # index 3
 		self._page_stack.addWidget(self.validation_page)          # index 4
 		self._page_stack.addWidget(self.setup_page)               # index 5
+		self._page_stack.addWidget(self.flowrate_result_page)     # index 6
+		self._page_stack.addWidget(self.guide_page)               # index 7
+
+		# Group 0: Guide
+		_guide_section = _NavSection("Guide", self._nav_inner)
+		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _guide_section)
 
 		# Group 1: Inputs
 		_inputs_section = _NavSection("Inputs", self._nav_inner)
@@ -472,12 +486,18 @@ class MainWindow(QMainWindow):
 		_validation_section = _NavSection("Validation", self._nav_inner)
 		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _validation_section)
 
+		# Group 4: Result (standalone page, sibling of Validation)
+		_flowrate_result_section = _NavSection("Result", self._nav_inner)
+		self._nav_layout.insertWidget(self._nav_layout.count() - 1, _flowrate_result_section)
+
 		# Sidebar navigation items
+		self.btn_guide = _guide_section.add_item("User Guide")
 		self.btn_input = _inputs_section.add_item("Configuration")
 		self.btn_setup = _inputs_section.add_item("Setup")
 		self.btn_properties = _inputs_section.add_item("Properties")
 		self.btn_configuration = _inputs_section.add_item("Constraints")
 		self.btn_run = _sim_section.add_item("Simulation Run")
+		self.btn_flowrate_result = _flowrate_result_section.add_item("Forecast")
 		# Validation groups each get their own sidebar item; all share page index 4
 		# (self.validation_page) but select a different internal group via show_group().
 		self.btn_val_summary = _validation_section.add_item("Summary")
@@ -487,6 +507,7 @@ class MainWindow(QMainWindow):
 		self.btn_val_comparison = _validation_section.add_item("Newton Comparison")
 
 		# Wire the navigation buttons
+		self.btn_guide.clicked.connect(lambda _=None: self._switch_to_page(7, self.btn_guide))
 		self.btn_input.clicked.connect(lambda _=None: self._switch_to_page(0))
 		self.btn_properties.clicked.connect(lambda _=None: self._switch_to_page(1))
 		self.btn_configuration.clicked.connect(lambda _=None: self._switch_to_page(2))
@@ -497,7 +518,9 @@ class MainWindow(QMainWindow):
 		self.btn_val_jacobian.clicked.connect(lambda _=None: self._switch_to_validation(3, self.btn_val_jacobian))
 		self.btn_val_comparison.clicked.connect(lambda _=None: self._switch_to_validation(4, self.btn_val_comparison))
 		self.btn_setup.clicked.connect(lambda _=None: self._switch_to_page(5))
+		self.btn_flowrate_result.clicked.connect(lambda _=None: self._switch_to_page(6, self.btn_flowrate_result))
 		self._nav_buttons.extend([
+			self.btn_guide,
 			self.btn_input,
 			self.btn_properties,
 			self.btn_configuration,
@@ -508,6 +531,7 @@ class MainWindow(QMainWindow):
 			self.btn_val_jacobian,
 			self.btn_val_comparison,
 			self.btn_setup,
+			self.btn_flowrate_result,
 		])
 		# Default button per page index, used by _switch_to_page() when no
 		# explicit active_btn is passed (e.g. goToRunRequested -> page 3).
@@ -518,6 +542,8 @@ class MainWindow(QMainWindow):
 			2: self.btn_configuration,
 			3: self.btn_run,
 			5: self.btn_setup,
+			6: self.btn_flowrate_result,
+			7: self.btn_guide,
 		}
 
 		# Mark first nav btn active
@@ -538,6 +564,7 @@ class MainWindow(QMainWindow):
 		self.run_page.runRequested.connect(self._start_run_simulation)
 		self.run_page.cancelRequested.connect(self._cancel_run_simulation)
 		self.validation_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
+		self.flowrate_result_page.goToRunRequested.connect(lambda: self._switch_to_page(3))
 		self.well_placement_page.wellsChanged.connect(self._handle_wells_changed)
 		self.jacobian_page.perturbationChanged.connect(self._handle_perturbation_changed)
 		self.methods_page.methodSaved.connect(self._handle_method_saved)
@@ -765,6 +792,7 @@ class MainWindow(QMainWindow):
 		self._refresh_pages()
 		self.validation_page.set_run_result(run_result)
 		self.validation_page.set_comparison_results(self.newton_raphson_result, self.quasi_newton_result)
+		self.flowrate_result_page.set_run_result(run_result)
 		self._switch_to_validation(0, self.btn_val_summary)  # go to Validation > Summary
 		self.statusBar().showMessage(msg, 8000)
 
@@ -788,6 +816,8 @@ class MainWindow(QMainWindow):
 		self.validation_page.set_project(self.project_config)
 		self.validation_page.set_run_result(self.run_result)
 		self.validation_page.set_comparison_results(self.newton_raphson_result, self.quasi_newton_result)
+		self.flowrate_result_page.set_project(self.project_config)
+		self.flowrate_result_page.set_run_result(self.run_result)
 		self.connectivity_3d_page.set_project(self.project_config)
 		self.well_placement_page.set_project(self.project_config)
 		self.jacobian_page.set_project(self.project_config)

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
 	QHBoxLayout,
 	QLabel,
 	QPushButton,
-	QScrollArea,
 	QVBoxLayout,
 	QWidget,
 )
@@ -49,7 +48,8 @@ class _MethodImage(QLabel):
 		self._pixmap = QPixmap(str(image_path))
 		self.setObjectName("methodImage")
 		self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-		self.setMinimumHeight(320)
+		self.setMinimumHeight(220)
+		self.setMaximumHeight(280)
 		self.setScaledContents(False)
 
 	def resizeEvent(self, event) -> None:  # noqa: N802
@@ -75,8 +75,8 @@ class _MethodCard(QFrame):
 		self._opacity = QGraphicsOpacityEffect(self)
 		self.setGraphicsEffect(self._opacity)
 		root = QVBoxLayout(self)
-		root.setContentsMargins(20, 18, 20, 18)
-		root.setSpacing(12)
+		root.setContentsMargins(16, 14, 16, 14)
+		root.setSpacing(10)
 
 		copy = _METHOD_COPY[method_key]
 		title_row = QHBoxLayout()
@@ -121,19 +121,9 @@ class MethodsPage(QWidget):
 		self._draft_method = "newton_raphson"
 		self._confirmed = False
 
-		outer = QVBoxLayout(self)
-		outer.setContentsMargins(0, 0, 0, 0)
-		outer.setSpacing(0)
-		scroll = QScrollArea(self)
-		scroll.setWidgetResizable(True)
-		scroll.setFrameShape(QFrame.Shape.NoFrame)
-		outer.addWidget(scroll)
-
-		content = QWidget()
-		scroll.setWidget(content)
-		root = QVBoxLayout(content)
-		root.setContentsMargins(18, 16, 18, 18)
-		root.setSpacing(12)
+		root = QVBoxLayout(self)
+		root.setContentsMargins(18, 14, 18, 14)
+		root.setSpacing(10)
 
 		hdr = QHBoxLayout()
 		title_block = QVBoxLayout()
@@ -156,8 +146,8 @@ class MethodsPage(QWidget):
 		control_panel = QFrame()
 		control_panel.setObjectName("pageSectionPanel")
 		control_root = QVBoxLayout(control_panel)
-		control_root.setContentsMargins(18, 16, 18, 16)
-		control_root.setSpacing(10)
+		control_root.setContentsMargins(18, 14, 18, 14)
+		control_root.setSpacing(8)
 
 		mode_row = QHBoxLayout()
 		mode_row.setSpacing(8)
@@ -190,13 +180,12 @@ class MethodsPage(QWidget):
 		root.addWidget(control_panel)
 
 		cards_row = QHBoxLayout()
-		cards_row.setSpacing(12)
+		cards_row.setSpacing(10)
 		self.newton_card = _MethodCard("newton_raphson")
 		self.quasi_card = _MethodCard("quasi_newton")
 		cards_row.addWidget(self.newton_card, 1)
 		cards_row.addWidget(self.quasi_card, 1)
-		root.addLayout(cards_row)
-		root.addStretch(1)
+		root.addLayout(cards_row, 1)
 
 		self.btn_newton.clicked.connect(lambda: self._activate_method("newton_raphson"))
 		self.btn_quasi.clicked.connect(lambda: self._activate_method("quasi_newton"))

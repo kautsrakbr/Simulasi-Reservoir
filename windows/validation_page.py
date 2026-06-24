@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 
 from PySide6.QtCore import Qt, QPointF, QRect, QRectF, QSize, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QLinearGradient, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen, QLinearGradient, QPolygonF
 from PySide6.QtWidgets import (
 	QAbstractItemView,
 	QComboBox,
@@ -13,10 +14,12 @@ from PySide6.QtWidgets import (
 	QHBoxLayout,
 	QHeaderView,
 	QLabel,
+	QLineEdit,
 	QProgressBar,
 	QPushButton,
 	QScrollArea,
 	QSizePolicy,
+	QSlider,
 	QSpinBox,
 	QSplitter,
 	QStackedWidget,
@@ -96,6 +99,22 @@ def get_color_from_colormap(val: float, vmin: float, vmax: float, cmap: str) -> 
 			rgb = interp_color(stops[2], stops[3], (f - 0.5) / 0.25)
 		else:
 			rgb = interp_color(stops[3], stops[4], (f - 0.75) / 0.25)
+	elif cmap == "jet":
+		stops = [
+			(0, 0, 255),
+			(0, 255, 255),
+			(0, 255, 0),
+			(255, 255, 0),
+			(255, 0, 0),
+		]
+		if f <= 0.25:
+			rgb = interp_color(stops[0], stops[1], f / 0.25)
+		elif f <= 0.5:
+			rgb = interp_color(stops[1], stops[2], (f - 0.25) / 0.25)
+		elif f <= 0.75:
+			rgb = interp_color(stops[2], stops[3], (f - 0.5) / 0.25)
+		else:
+			rgb = interp_color(stops[3], stops[4], (f - 0.75) / 0.25)
 	elif cmap == "winter":
 		rgb = interp_color((0, 0, 255), (0, 255, 128), f)
 	elif cmap == "autumn":
@@ -132,12 +151,49 @@ def get_color_from_colormap(val: float, vmin: float, vmax: float, cmap: str) -> 
 	return bg, fg
 
 
+# Shared by the Table, Heatmap, and Per Waktu (time-lapse) sub-tabs so every
+# view formats a given property identically.
+PROP_VALUE_FORMATS: dict[str, str] = {
+	"pressure_psia": "{:.2f}",
+	"so": "{:.5f}", "sw": "{:.5f}", "sg": "{:.5f}",
+	"bo": "{:.6f}", "bw": "{:.6f}", "bg": "{:.6f}",
+	"mu_o": "{:.5f}", "mu_w": "{:.5f}", "mu_g": "{:.5f}",
+	"kro": "{:.5f}", "krw": "{:.5f}", "krg": "{:.5f}",
+	"lam_o": "{:.6f}", "lam_w": "{:.6f}", "lam_g": "{:.6f}",
+	"rho_o": "{:.3f}", "rho_w": "{:.3f}", "rho_g": "{:.3f}",
+	"pcow": "{:.4f}", "pcgw": "{:.4f}",
+}
+
+# Colormap presets the user can pick for the grid heatmap. "None" means
+# "use the recommended colormap for the selected property".
+COLORMAP_CHOICES: list[tuple[str, str | None]] = [
+	("Default (Sesuai Properti)", None),
+	("Plasma", "plasma"),
+	("Viridis", "viridis"),
+	("Jet (Rainbow)", "jet"),
+	("Blues", "Blues"),
+	("Greens", "Greens"),
+	("Yellow-Orange-Red", "YlOrRd"),
+	("Hot", "hot"),
+	("Cool", "cool"),
+	("Winter", "winter"),
+	("Autumn", "autumn"),
+	("Copper", "copper"),
+]
+
+
 # ── Colorbar Widget ───────────────────────────────────────────────────────────
 
 class _ColorbarWidget(QWidget):
-	def __init__(self, parent: QWidget | None = None) -> None:
+	def __init__(self, parent: QWidget | None = None, orientation: Qt.Orientation = Qt.Orientation.Horizontal) -> None:
 		super().__init__(parent)
-		self.setMinimumHeight(45)
+		self._orientation = orientation
+		if orientation == Qt.Orientation.Vertical:
+			self.setFixedWidth(74)
+			self.setMinimumHeight(140)
+			self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+		else:
+			self.setMinimumHeight(45)
 		self.vmin = 0.0
 		self.vmax = 1.0
 		self.cmap = "plasma"
@@ -150,14 +206,22 @@ class _ColorbarWidget(QWidget):
 		self.label = label
 		self.update()
 
+	@staticmethod
+	def _fmt(val: float) -> str:
+		return f"{val:.4e}" if abs(val) < 1e-2 or abs(val) >= 1e4 else f"{val:.4f}"
+
 	def paintEvent(self, event) -> None:
 		painter = QPainter(self)
 		painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+		if self._orientation == Qt.Orientation.Vertical:
+			self._paint_vertical(painter)
+		else:
+			self._paint_horizontal(painter)
+		painter.end()
 
+	def _paint_horizontal(self, painter: QPainter) -> None:
 		w = self.width()
-		h = self.height()
 
-		# Draw label
 		font = QFont("Segoe UI", 8)
 		painter.setFont(font)
 		painter.setPen(QColor("#5B6676"))
@@ -165,7 +229,6 @@ class _ColorbarWidget(QWidget):
 		title = f"Skala: {self.label}"
 		painter.drawText(QRectF(0, 0, w, 15), Qt.AlignmentFlag.AlignCenter, title)
 
-		# Draw color bar
 		bar_y = 17
 		bar_h = 12
 		bar_margin = 15
@@ -183,15 +246,40 @@ class _ColorbarWidget(QWidget):
 		painter.setPen(QPen(QColor("#D7DEE7"), 1))
 		painter.drawRect(bar_margin, bar_y, bar_w, bar_h)
 
-		# Draw min/max text labels
-		min_txt = f"{self.vmin:.4e}" if abs(self.vmin) < 1e-2 or abs(self.vmin) >= 1e4 else f"{self.vmin:.4f}"
-		max_txt = f"{self.vmax:.4e}" if abs(self.vmax) < 1e-2 or abs(self.vmax) >= 1e4 else f"{self.vmax:.4f}"
-
 		painter.setPen(QColor("#1F2937"))
-		painter.drawText(QRectF(bar_margin, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignLeft, min_txt)
-		painter.drawText(QRectF(w - bar_margin - 100, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignRight, max_txt)
+		painter.drawText(QRectF(bar_margin, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignLeft, self._fmt(self.vmin))
+		painter.drawText(QRectF(w - bar_margin - 100, bar_y + bar_h + 2, 100, 12), Qt.AlignmentFlag.AlignRight, self._fmt(self.vmax))
 
-		painter.end()
+	def _paint_vertical(self, painter: QPainter) -> None:
+		w = self.width()
+		h = self.height()
+
+		bar_x = 10
+		bar_w = 14
+		label_h = 16
+		bar_margin = label_h
+		bar_h = h - 2 * bar_margin
+		if bar_h <= 10:
+			return
+
+		grad = QLinearGradient(0, bar_margin, 0, bar_margin + bar_h)
+		n_stops = 10
+		for i in range(n_stops + 1):
+			frac = i / n_stops
+			val = self.vmin + frac * (self.vmax - self.vmin)
+			bg_color, _ = get_color_from_colormap(val, self.vmin, self.vmax, self.cmap)
+			# Top of the bar = vmax, bottom = vmin (standard vertical colorbar convention).
+			grad.setColorAt(1.0 - frac, bg_color)
+
+		painter.setBrush(QBrush(grad))
+		painter.setPen(QPen(QColor("#D7DEE7"), 1))
+		painter.drawRect(bar_x, bar_margin, bar_w, bar_h)
+
+		painter.setFont(QFont("Segoe UI", 7))
+		painter.setPen(QColor("#1F2937"))
+		text_rect_w = w - bar_x
+		painter.drawText(QRectF(bar_x - 2, 0, text_rect_w, label_h), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, self._fmt(self.vmax))
+		painter.drawText(QRectF(bar_x - 2, bar_margin + bar_h, text_rect_w, label_h), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._fmt(self.vmin))
 
 
 # ── Heatmap Cell Widget ────────────────────────────────────────────────────────
@@ -217,34 +305,70 @@ class _HeatmapCellWidget(QFrame):
 
 	def update_cell(self, value: float, bg_color: QColor, fg_color: QColor, fmt_str: str, w: int, h: int) -> None:
 		self.setFixedSize(w, h)
-		self.lbl_val.setText(fmt_str.format(value))
+		num_text = f"C{self.cell_num}"
+		val_text = fmt_str.format(value)
+		available_w = max(w - 10, 10)
 
-		# Scale fonts based on cell dimensions
+		# Scale fonts based on cell dimensions, then shrink further (and elide
+		# as a last resort) until the text actually fits -- never let digits
+		# get clipped by the cell's rounded border.
 		fs_num = 10 if w >= 100 else (8 if w >= 75 else 7)
 		fs_val = 11 if w >= 100 else (9 if w >= 75 else 8)
 
 		font_num = QFont("Segoe UI", fs_num)
 		font_num.setBold(True)
-		self.lbl_num.setFont(font_num)
+		while fs_num > 6 and QFontMetrics(font_num).horizontalAdvance(num_text) > available_w:
+			fs_num -= 1
+			font_num.setPointSize(fs_num)
+		if QFontMetrics(font_num).horizontalAdvance(num_text) > available_w:
+			num_text = QFontMetrics(font_num).elidedText(num_text, Qt.TextElideMode.ElideRight, available_w)
+		self.lbl_num.setText(num_text)
 
 		font_val = QFont("Segoe UI", fs_val)
 		font_val.setBold(True)
-		self.lbl_val.setFont(font_val)
+		while fs_val > 6 and QFontMetrics(font_val).horizontalAdvance(val_text) > available_w:
+			fs_val -= 1
+			font_val.setPointSize(fs_val)
+		if QFontMetrics(font_val).horizontalAdvance(val_text) > available_w:
+			val_text = QFontMetrics(font_val).elidedText(val_text, Qt.TextElideMode.ElideRight, available_w)
+		self.lbl_val.setText(val_text)
 
 		bg_hex = bg_color.name()
 		fg_hex = fg_color.name()
+		fg_dim = f"rgba({fg_color.red()}, {fg_color.green()}, {fg_color.blue()}, 175)"
 
-		# Set styling with a clean, dark-mode matching border
+		# Soft hairline border (instead of a heavy dark outline) so the grid
+		# reads as a continuous tile sheet rather than boxed-in squares.
 		self.setStyleSheet(f"""
 			QFrame#heatmapCell {{
 				background-color: {bg_hex};
-				border: 1.5px solid #1F2937;
-				border-radius: 8px;
+				border: 1px solid rgba(255, 255, 255, 70);
+				border-radius: 10px;
 			}}
 		""")
-		self.lbl_num.setStyleSheet(f"color: {fg_hex}; background: transparent;")
-		self.lbl_val.setStyleSheet(f"color: {fg_hex}; background: transparent;")
+		# font-size must be set here (inline, per-instance QSS) rather than via
+		# .setFont() -- the app-level stylesheet's "QWidget { font-size: 10pt }"
+		# rule otherwise silently overrides any programmatic font set on a
+		# QLabel, which was clipping these dynamically-sized cell values.
+		self.lbl_num.setStyleSheet(
+			f"color: {fg_dim}; background: transparent; font-size: {fs_num}pt; font-weight: 700;"
+		)
+		self.lbl_val.setStyleSheet(
+			f"color: {fg_hex}; background: transparent; font-size: {fs_val}pt; font-weight: 700;"
+		)
 
+
+# ── Per Waktu (time-lapse) panel ──────────────────────────────────────────────
+
+@dataclass
+class _MultiStepPanel:
+	"""One property heatmap inside the Per Waktu tab's side-by-side comparison."""
+
+	combo: QComboBox
+	grid_layout: QGridLayout
+	colorbar: "_ColorbarWidget"
+	title_label: QLabel
+	cell_widgets: dict[int, "_HeatmapCellWidget"] = field(default_factory=dict)
 
 
 # ── Pure functions ────────────────────────────────────────────────────────────
@@ -427,6 +551,17 @@ def _clear_layout(lay: QVBoxLayout) -> None:
 		item = lay.takeAt(0)
 		if item.widget():
 			item.widget().deleteLater()
+
+
+class _SortableTableItem(QTableWidgetItem):
+	def __init__(self, text: str, sort_value: object) -> None:
+		super().__init__(text)
+		self._sort_value = sort_value
+
+	def __lt__(self, other) -> bool:
+		if isinstance(other, _SortableTableItem):
+			return self._sort_value < other._sort_value
+		return super().__lt__(other)
 
 
 # ── Norm Chart ────────────────────────────────────────────────────────────────
@@ -1142,6 +1277,11 @@ class ValidationPage(QWidget):
 		self._well_cell: int = 1
 		self._cell_btns: dict[int, QPushButton] = {}
 		self._prop_cell_widgets: dict[int, _HeatmapCellWidget] = {}
+		self._multistep_panels: list[_MultiStepPanel] = []
+		self._multistep_global_ranges: dict[str, tuple[float, float]] = {}
+		self._multistep_timer = QTimer(self)
+		self._multistep_timer.setInterval(700)
+		self._multistep_timer.timeout.connect(self._multistep_timer_tick)
 		self._jac_sym_selected_cell: int | None = None
 		self._jac_sym_btns: dict[int, QPushButton] = {}
 		self._grid_connection_3d_page = Connectivity3DPage(show_bottom_controls=False, detail_mode="cell_diagnostics")
@@ -1423,7 +1563,7 @@ class ValidationPage(QWidget):
 		card_lay.addLayout(title_row)
 
 		self._resid_table = QTableWidget()
-		self._resid_table.setObjectName("resultResidTable")
+		self._resid_table.setObjectName("dataTable")
 		self._resid_table.setColumnCount(4)
 		self._resid_table.setHorizontalHeaderLabels(
 			["Sel", "Residual Oil", "Residual Water", "Residual Gas"]
@@ -1433,7 +1573,6 @@ class ValidationPage(QWidget):
 		self._resid_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self._resid_table.verticalHeader().setVisible(False)
 		self._resid_table.verticalHeader().setDefaultSectionSize(30)
-		self._resid_table.setShowGrid(False)
 		rh = self._resid_table.horizontalHeader()
 		rh.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
 		self._resid_table.setColumnWidth(0, 62)
@@ -1472,7 +1611,7 @@ class ValidationPage(QWidget):
 		tc_lay.addLayout(_title_row(tc_title, "K", "#2563A6"))
 
 		self._conv_table = QTableWidget()
-		self._conv_table.setObjectName("resultConvTable")
+		self._conv_table.setObjectName("dataTable")
 		self._conv_table.setColumnCount(7)
 		self._conv_table.setHorizontalHeaderLabels(
 			["Step", "t (hari)", "dt (hari)", "Iterasi", "MaxR", "Norm", "Status"]
@@ -1481,7 +1620,7 @@ class ValidationPage(QWidget):
 		self._conv_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
 		self._conv_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self._conv_table.verticalHeader().setVisible(False)
-		self._conv_table.setShowGrid(False)
+		self._conv_table.setAlternatingRowColors(True)
 		hh = self._conv_table.horizontalHeader()
 		hh.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 		for col in (0, 3):
@@ -2196,14 +2335,14 @@ class ValidationPage(QWidget):
 		tc_lay.addLayout(_title_row(tc_title, "K", "#A86A15"))
 
 		self.corrections_table = QTableWidget()
-		self.corrections_table.setObjectName("resultCorrectionsTable")
+		self.corrections_table.setObjectName("dataTable")
 		self.corrections_table.setColumnCount(4)
 		self.corrections_table.setHorizontalHeaderLabels(["Cell", "δp (psia)", "δSw (frac)", "δSg (frac)"])
 		self.corrections_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 		self.corrections_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
 		self.corrections_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self.corrections_table.verticalHeader().setVisible(False)
-		self.corrections_table.setShowGrid(True)
+		self.corrections_table.setAlternatingRowColors(True)
 
 		th = self.corrections_table.horizontalHeader()
 		th.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -2441,7 +2580,7 @@ class ValidationPage(QWidget):
 		vlay.addWidget(toolbar)
 
 		self.retry_table = QTableWidget(0, 7)
-		self.retry_table.setObjectName("resultRetryTable")
+		self.retry_table.setObjectName("dataTable")
 		self.retry_table.setHorizontalHeaderLabels(
 			["Step", "Retry", "Target Time (days)", "dt (days)",
 			 "Max Residual", "Residual Norm", "Status"]
@@ -2451,6 +2590,7 @@ class ValidationPage(QWidget):
 		self.retry_table.setSortingEnabled(True)
 		self.retry_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 		self.retry_table.verticalHeader().setVisible(False)
+		self.retry_table.setAlternatingRowColors(True)
 		vlay.addWidget(self.retry_table)
 		return w
 
@@ -2967,6 +3107,7 @@ class ValidationPage(QWidget):
 			self._prop_status.setText("Jalankan simulasi dulu.")
 			self.prop_table.setRowCount(0)
 			self._clear_prop_grid()
+			self._refresh_multistep_tab()
 			self._badge.setText("")
 			self._badge.setProperty("status", "empty")
 			self._badge.hide()
@@ -3007,6 +3148,7 @@ class ValidationPage(QWidget):
 		self._refresh_jacobian_tab()
 		self._refresh_corrections_tab()
 		self._refresh_properties_tab()
+		self._refresh_multistep_tab()
 		self._refresh_cell_colors()
 		if self._selected_cell is not None:
 			self._update_sel_card()
@@ -3045,10 +3187,9 @@ class ValidationPage(QWidget):
 		self.prop_step_combo.currentIndexChanged.connect(self._on_prop_step_changed)
 		tbar_lay.addWidget(self.prop_step_combo)
 
-		prop_lbl = QLabel("Properti:")
-		prop_lbl.setObjectName("resultToolbarLabel")
-		tbar_lay.addWidget(prop_lbl)
-
+		# "Properti" only matters for the Heatmap sub-tab (Table already
+		# shows every property at once) — its combo lives there instead of
+		# this shared bar, see the Heatmap tab section below.
 		self.prop_select_combo = QComboBox()
 		self.prop_select_combo.setObjectName("resultPropSelectCombo")
 		self.prop_select_combo.setMinimumWidth(210)
@@ -3081,16 +3222,16 @@ class ValidationPage(QWidget):
 			self.prop_select_combo.addItem(prop_title, (prop_key, prop_cmap))
 
 		self.prop_select_combo.currentIndexChanged.connect(self._on_prop_type_changed)
-		tbar_lay.addWidget(self.prop_select_combo)
 
 		vlay.addWidget(toolbar)
 
-		# Horizontal splitter
-		splitter = QSplitter(Qt.Orientation.Horizontal)
-		splitter.setHandleWidth(6)
-		splitter.setChildrenCollapsible(False)
+		self._prop_content_tabs = QTabWidget()
+		self._prop_content_tabs.setObjectName("subTabs")
+		self._prop_content_tabs.tabBar().setObjectName("subTabBar")
+		self._prop_content_tabs.tabBar().setExpanding(False)
+		self._prop_content_tabs.setDocumentMode(True)
 
-		# Left Card: Data Table
+		# Table tab
 		table_card = QFrame()
 		table_card.setObjectName("resultCard")
 		tc_lay = QVBoxLayout(table_card)
@@ -3101,12 +3242,42 @@ class ValidationPage(QWidget):
 		tc_title.setObjectName("resultCardTitle")
 		tc_lay.addLayout(_title_row(tc_title, "P", "#0F5C8E"))
 
+		table_ctrl = QHBoxLayout()
+		table_ctrl.setContentsMargins(0, 0, 0, 0)
+		table_ctrl.setSpacing(8)
+		self._prop_table_view_combo = QComboBox()
+		self._prop_table_view_combo.setObjectName("pageCompactControl")
+		self._prop_table_view_combo.setMinimumWidth(130)
+		self._prop_table_view_combo.addItem("Scroll", "scroll")
+		self._prop_table_view_combo.addItem("Fit", "fit")
+		self._prop_table_view_combo.setToolTip("Mode tampilan tabel")
+		table_ctrl.addWidget(self._prop_table_view_combo)
+		self._prop_table_filter = QLineEdit()
+		self._prop_table_filter.setObjectName("pageCompactField")
+		self._prop_table_filter.setPlaceholderText("Search table")
+		table_ctrl.addWidget(self._prop_table_filter, 1)
+		self._prop_table_meta = QLabel("0 rows")
+		self._prop_table_meta.setObjectName("resultToolbarLabel")
+		table_ctrl.addWidget(self._prop_table_meta)
+		tc_lay.addLayout(table_ctrl)
+
 		self.prop_table = QTableWidget()
-		self.prop_table.setObjectName("resultPropTable")
+		self.prop_table.setObjectName("dataTable")
+		self.prop_table.setToolTip("Klik header kolom untuk sort")
 		self._prop_table_headers = [
 			"Cell", "i", "j", "p (psia)", "So", "Sw", "Sg", "Bo", "Bw", "Bg",
 			"mu_o", "mu_w", "mu_g", "kro", "krw", "krg", "lam_o", "lam_w", "lam_g",
 			"rho_o", "rho_w", "rho_g", "Pcow", "Pcgw"
+		]
+		self._prop_table_headers_compact = [
+			"Cell", "i", "j", "p", "So", "Sw", "Sg", "Bo", "Bw", "Bg",
+			"mu_o", "mu_w", "mu_g", "kro", "krw", "krg", "lam_o", "lam_w", "lam_g",
+			"rho_o", "rho_w", "rho_g", "Pcow", "Pcgw"
+		]
+		self._prop_table_column_keys = [
+			"cell", "i_index", "j_index", "pressure_psia", "so", "sw", "sg", "bo", "bw", "bg",
+			"mu_o", "mu_w", "mu_g", "kro", "krw", "krg", "lam_o", "lam_w", "lam_g",
+			"rho_o", "rho_w", "rho_g", "pcow", "pcgw"
 		]
 		self.prop_table.setColumnCount(len(self._prop_table_headers))
 		self.prop_table.setHorizontalHeaderLabels(self._prop_table_headers)
@@ -3114,16 +3285,27 @@ class ValidationPage(QWidget):
 		self.prop_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
 		self.prop_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self.prop_table.verticalHeader().setVisible(False)
-		self.prop_table.setShowGrid(True)
-		self.prop_table.setAlternatingRowColors(False)
+		self.prop_table.setShowGrid(False)
+		self.prop_table.setAlternatingRowColors(True)
+		self.prop_table.setWordWrap(False)
+		self.prop_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+		self.prop_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+		self.prop_table.setCornerButtonEnabled(False)
+		self.prop_table.setSortingEnabled(True)
 
 		ph = self.prop_table.horizontalHeader()
-		ph.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+		ph.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+		ph.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+		ph.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+		for col_idx in range(3, len(self._prop_table_headers)):
+			ph.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Fixed)
+			self.prop_table.setColumnWidth(col_idx, 96)
+		self._prop_table_view_combo.currentIndexChanged.connect(self._populate_properties_display)
+		self._prop_table_filter.textChanged.connect(self._populate_properties_display)
 		tc_lay.addWidget(self.prop_table, 1)
+		self._prop_content_tabs.addTab(table_card, "  Table  ")
 
-		splitter.addWidget(table_card)
-
-		# Right Card: Heatmap Grid
+		# Heatmap tab
 		map_card = QFrame()
 		map_card.setObjectName("resultCard")
 		mc_lay = QVBoxLayout(map_card)
@@ -3132,7 +3314,24 @@ class ValidationPage(QWidget):
 
 		self.map_title = QLabel("PETA GRID HEATMAP: p (psia)")
 		self.map_title.setObjectName("resultCardTitle")
-		mc_lay.addLayout(_title_row(self.map_title, "M", "#2D6A4F"))
+
+		map_title_row = _title_row(self.map_title, "M", "#2D6A4F")
+		prop_lbl = QLabel("Properti:")
+		prop_lbl.setObjectName("resultToolbarLabel")
+		map_title_row.addWidget(prop_lbl)
+		map_title_row.addWidget(self.prop_select_combo)
+		cmap_lbl = QLabel("Warna:")
+		cmap_lbl.setObjectName("resultToolbarLabel")
+		map_title_row.addWidget(cmap_lbl)
+		self.heatmap_cmap_combo = QComboBox()
+		self.heatmap_cmap_combo.setObjectName("pageCompactControl")
+		self.heatmap_cmap_combo.setMinimumWidth(190)
+		self.heatmap_cmap_combo.setToolTip("Pilih skema warna heatmap")
+		for cmap_label, cmap_key in COLORMAP_CHOICES:
+			self.heatmap_cmap_combo.addItem(cmap_label, cmap_key)
+		self.heatmap_cmap_combo.currentIndexChanged.connect(self._populate_properties_display)
+		map_title_row.addWidget(self.heatmap_cmap_combo)
+		mc_lay.addLayout(map_title_row)
 
 		self.prop_grid_scroll = QScrollArea()
 		self.prop_grid_scroll.setObjectName("resultGridScroll")
@@ -3142,31 +3341,95 @@ class ValidationPage(QWidget):
 		self.prop_grid_container = QWidget()
 		self.prop_grid_container.setObjectName("resultGridPanel")
 		self.prop_grid_layout = QGridLayout(self.prop_grid_container)
-		self.prop_grid_layout.setSpacing(6)
+		self.prop_grid_layout.setSpacing(8)
 		self.prop_grid_layout.setContentsMargins(12, 12, 12, 12)
 		self.prop_grid_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
 		self.prop_grid_scroll.setWidget(self.prop_grid_container)
-		mc_lay.addWidget(self.prop_grid_scroll, 1)
 
-		self.colorbar_widget = _ColorbarWidget(self)
-		mc_lay.addWidget(self.colorbar_widget)
+		map_content_row = QHBoxLayout()
+		map_content_row.setContentsMargins(0, 0, 0, 0)
+		map_content_row.setSpacing(6)
+		map_content_row.addWidget(self.prop_grid_scroll, 1)
+		self.colorbar_widget = _ColorbarWidget(self, orientation=Qt.Orientation.Vertical)
+		map_content_row.addWidget(self.colorbar_widget)
+		mc_lay.addLayout(map_content_row, 1)
+		self._prop_content_tabs.addTab(map_card, "  Heatmap  ")
 
-		splitter.addWidget(map_card)
+		self._prop_content_tabs.addTab(self._build_multistep_tab(), "  Per Waktu  ")
 
-		splitter.setStretchFactor(0, 3)
-		splitter.setStretchFactor(1, 2)
-		splitter.setSizes([720, 460])
-
-		vlay.addWidget(splitter, 1)
+		vlay.addWidget(self._prop_content_tabs, 1)
 		return w
 
+	def _clear_grid_layout(self, layout: QGridLayout, widgets: dict[int, "_HeatmapCellWidget"]) -> None:
+		while layout.count():
+			item = layout.takeAt(0)
+			w = item.widget()
+			if w is not None:
+				# Detach immediately rather than relying solely on deleteLater()
+				# — until the deferred delete actually runs, a widget that's
+				# merely taken out of the layout stays a visible child at its
+				# last geometry, which can show up as a stray duplicate tile.
+				w.hide()
+				w.setParent(None)
+				w.deleteLater()
+		widgets.clear()
+
 	def _clear_prop_grid(self) -> None:
-		while self.prop_grid_layout.count():
-			item = self.prop_grid_layout.takeAt(0)
-			if item.widget():
-				item.widget().deleteLater()
-		self._prop_cell_widgets.clear()
+		self._clear_grid_layout(self.prop_grid_layout, self._prop_cell_widgets)
+
+	def _populate_heatmap_grid(
+		self,
+		cell_props_list: list[dict],
+		grid_layout: QGridLayout,
+		widgets: dict[int, "_HeatmapCellWidget"],
+		prop_key: str,
+		cmap: str,
+		colorbar: "_ColorbarWidget",
+		label: str,
+		cell_size: tuple[int, int] | None = None,
+		value_range: tuple[float, float] | None = None,
+	) -> None:
+		"""Fill a grid layout with colored cells for one property/step.
+
+		Shared by the single Heatmap tab and each panel of the Per Waktu
+		tab so both views render identically. `value_range`, when given,
+		fixes vmin/vmax instead of rescaling to this step's own min/max --
+		used by the Per Waktu tab so color actually evolves across the
+		timestep scrubber instead of every frame re-stretching its own
+		(often near-constant) local spread to the full colormap.
+		"""
+		self._clear_grid_layout(grid_layout, widgets)
+
+		if value_range is not None:
+			vmin, vmax = value_range
+		else:
+			prop_vals = [cell_data[prop_key] for cell_data in cell_props_list]
+			vmin = min(prop_vals)
+			vmax = max(prop_vals)
+		colorbar.set_scale(vmin, vmax, cmap, label)
+		fmt_str = PROP_VALUE_FORMATS.get(prop_key, "{:.4f}")
+
+		n_cells = len(cell_props_list)
+		if cell_size is not None:
+			cell_w, cell_h = cell_size
+		else:
+			cell_w = 120 if n_cells <= 16 else (80 if n_cells <= 100 else 55)
+			cell_h = 100 if n_cells <= 16 else (70 if n_cells <= 100 else 50)
+
+		for cell_data in cell_props_list:
+			cell_no = cell_data["cell"]
+			i_val = cell_data["i_index"]
+			j_val = cell_data["j_index"]
+			val = cell_data[prop_key]
+
+			bg_color, fg_color = get_color_from_colormap(val, vmin, vmax, cmap)
+
+			cell_widget = _HeatmapCellWidget(cell_no)
+			cell_widget.update_cell(val, bg_color, fg_color, fmt_str, cell_w, cell_h)
+
+			widgets[cell_no] = cell_widget
+			grid_layout.addWidget(cell_widget, j_val, i_val)
 
 	def _refresh_properties_tab(self) -> None:
 		if self._run_result is None or not self._run_result.steps:
@@ -3175,6 +3438,7 @@ class ValidationPage(QWidget):
 			self.prop_step_combo.clear()
 			self.prop_step_combo.blockSignals(False)
 			self.prop_table.setRowCount(0)
+			self._prop_table_meta.setText("0 rows")
 			self._clear_prop_grid()
 			return
 
@@ -3206,6 +3470,29 @@ class ValidationPage(QWidget):
 	def _on_prop_type_changed(self) -> None:
 		self._populate_properties_display()
 
+	def _apply_prop_table_column_mode(self) -> None:
+		head = self.prop_table.horizontalHeader()
+		mode = self._prop_table_view_combo.currentData() if hasattr(self, "_prop_table_view_combo") else "scroll"
+		if mode == "fit":
+			self.prop_table.setHorizontalHeaderLabels(self._prop_table_headers_compact)
+			head.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+			head.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+			head.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+			self.prop_table.setColumnWidth(0, 62)
+			self.prop_table.setColumnWidth(1, 38)
+			self.prop_table.setColumnWidth(2, 38)
+			for col_idx in range(3, len(self._prop_table_headers)):
+				head.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Fixed)
+				self.prop_table.setColumnWidth(col_idx, 72)
+		else:
+			self.prop_table.setHorizontalHeaderLabels(self._prop_table_headers)
+			head.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+			head.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+			head.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+			for col_idx in range(3, len(self._prop_table_headers)):
+				head.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Fixed)
+				self.prop_table.setColumnWidth(col_idx, 96)
+
 	def _populate_properties_display(self) -> None:
 		if self._run_result is None or not self._run_result.steps or self.project_config is None:
 			return
@@ -3218,63 +3505,42 @@ class ValidationPage(QWidget):
 		cell_props_list = get_all_cell_properties(self.project_config, step)
 
 		# 1. Populate Table
-		self.prop_table.setRowCount(len(cell_props_list))
+		self._apply_prop_table_column_mode()
 
-		fmts = {
-			"pressure_psia": "{:.2f}",
-			"so": "{:.5f}", "sw": "{:.5f}", "sg": "{:.5f}",
-			"bo": "{:.6f}", "bw": "{:.6f}", "bg": "{:.6f}",
-			"mu_o": "{:.5f}", "mu_w": "{:.5f}", "mu_g": "{:.5f}",
-			"kro": "{:.5f}", "krw": "{:.5f}", "krg": "{:.5f}",
-			"lam_o": "{:.6f}", "lam_w": "{:.6f}", "lam_g": "{:.6f}",
-			"rho_o": "{:.3f}", "rho_w": "{:.3f}", "rho_g": "{:.3f}",
-			"pcow": "{:.4f}", "pcgw": "{:.4f}",
-		}
+		fmts = PROP_VALUE_FORMATS
 
-		# Determine min and max for scaling colormaps
-		prop_minmax = {}
-		for key in fmts.keys():
-			vals = [r[key] for r in cell_props_list]
-			prop_minmax[key] = (min(vals), max(vals))
+		filter_text = self._prop_table_filter.text().strip().lower() if hasattr(self, "_prop_table_filter") else ""
 
-		prop_colormaps = {
-			"pressure_psia": "plasma",
-			"so": "YlOrRd",
-			"sw": "Blues",
-			"sg": "Greens",
-			"bo": "autumn",
-			"bw": "winter",
-			"bg": "copper",
-			"mu_o": "hot",
-			"mu_w": "cool",
-			"mu_g": "viridis",
-			"kro": "YlOrRd",
-			"krw": "Blues",
-			"krg": "Greens",
-			"lam_o": "plasma",
-			"lam_w": "plasma",
-			"lam_g": "plasma",
-			"rho_o": "hot",
-			"rho_w": "cool",
-			"rho_g": "viridis",
-			"pcow": "YlOrRd",
-			"pcgw": "Greens",
-		}
+		filtered_rows = []
+		for cell_data in cell_props_list:
+			search_blob = " ".join(
+				str(cell_data.get(key, "")) for key in self._prop_table_column_keys
+			).lower()
+			if filter_text and filter_text not in search_blob:
+				continue
+			filtered_rows.append(cell_data)
 
-		for r, cell_data in enumerate(cell_props_list):
+		self.prop_table.setRowCount(len(filtered_rows))
+		self._prop_table_meta.setText(f"{len(filtered_rows)} / {len(cell_props_list)} rows")
+		sort_section = self.prop_table.horizontalHeader().sortIndicatorSection()
+		sort_order = self.prop_table.horizontalHeader().sortIndicatorOrder()
+		row_height = 30 if (self._prop_table_view_combo.currentData() == "fit") else 34
+		self.prop_table.setSortingEnabled(False)
+
+		for r, cell_data in enumerate(filtered_rows):
 			cell_no = cell_data["cell"]
 			i_val = cell_data["i_index"]
 			j_val = cell_data["j_index"]
 
-			item_cell = QTableWidgetItem(f"Sel {cell_no}")
+			item_cell = _SortableTableItem(f"Sel {cell_no}", cell_no)
 			item_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			self.prop_table.setItem(r, 0, item_cell)
 
-			item_i = QTableWidgetItem(str(i_val))
+			item_i = _SortableTableItem(str(i_val), i_val)
 			item_i.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			self.prop_table.setItem(r, 1, item_i)
 
-			item_j = QTableWidgetItem(str(j_val))
+			item_j = _SortableTableItem(str(j_val), j_val)
 			item_j.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 			self.prop_table.setItem(r, 2, item_j)
 
@@ -3283,44 +3549,263 @@ class ValidationPage(QWidget):
 				val = cell_data[prop_key]
 				fmt = fmts.get(prop_key, "{:.4f}")
 
-				item = QTableWidgetItem(fmt.format(val))
+				item = _SortableTableItem(fmt.format(val), float(val))
 				item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 				item.setForeground(QBrush(QColor("#5B6676")))
 				self.prop_table.setItem(r, col_idx, item)
+			self.prop_table.setRowHeight(r, row_height)
+
+		self.prop_table.setSortingEnabled(True)
+		if sort_section >= 0:
+			self.prop_table.sortItems(sort_section, sort_order)
 
 		# 2. Populate Heatmap Grid
-		self._clear_prop_grid()
-
 		selected_prop_idx = self.prop_select_combo.currentIndex()
 		if selected_prop_idx < 0:
+			self._clear_prop_grid()
 			return
 
-		prop_key, prop_cmap = self.prop_select_combo.currentData()
+		prop_key, default_cmap = self.prop_select_combo.currentData()
 		prop_label = self.prop_select_combo.currentText()
+		override_cmap = self.heatmap_cmap_combo.currentData()
+		prop_cmap = override_cmap or default_cmap
 
 		self.map_title.setText(f"PETA GRID HEATMAP: {prop_label}")
+		self._populate_heatmap_grid(
+			cell_props_list, self.prop_grid_layout, self._prop_cell_widgets,
+			prop_key, prop_cmap, self.colorbar_widget, prop_label,
+		)
 
-		prop_vals = [cell_data[prop_key] for cell_data in cell_props_list]
-		vmin = min(prop_vals)
-		vmax = max(prop_vals)
+	# =========================================================================
+	# Per Waktu (time-lapse comparison) tab
+	# =========================================================================
 
-		self.colorbar_widget.set_scale(vmin, vmax, prop_cmap, prop_label)
-		fmt_str = fmts.get(prop_key, "{:.4f}")
+	def _build_multistep_panel(self, default_prop_idx: int) -> tuple[QFrame, "_MultiStepPanel"]:
+		"""Build one property card used inside the Per Waktu side-by-side row."""
+		card = QFrame()
+		card.setObjectName("resultCard")
+		lay = QVBoxLayout(card)
+		lay.setContentsMargins(10, 8, 10, 8)
+		lay.setSpacing(6)
 
+		combo = QComboBox()
+		combo.setObjectName("pageCompactControl")
+		for prop_key, prop_title, prop_cmap in self._properties_meta:
+			combo.addItem(prop_title, (prop_key, prop_cmap))
+		combo.setCurrentIndex(default_prop_idx)
+		lay.addWidget(combo)
+
+		title_label = QLabel(combo.currentText())
+		title_label.setObjectName("resultCardTitle")
+		lay.addLayout(_title_row(title_label, "M", "#2D6A4F"))
+
+		scroll = QScrollArea()
+		scroll.setObjectName("resultGridScroll")
+		scroll.setWidgetResizable(True)
+		scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+		container = QWidget()
+		container.setObjectName("resultGridPanel")
+		grid_layout = QGridLayout(container)
+		grid_layout.setSpacing(4)
+		grid_layout.setContentsMargins(8, 8, 8, 8)
+		grid_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+		scroll.setWidget(container)
+
+		content_row = QHBoxLayout()
+		content_row.setContentsMargins(0, 0, 0, 0)
+		content_row.setSpacing(6)
+		content_row.addWidget(scroll, 1)
+		colorbar = _ColorbarWidget(card, orientation=Qt.Orientation.Vertical)
+		content_row.addWidget(colorbar)
+		lay.addLayout(content_row, 1)
+
+		panel = _MultiStepPanel(combo=combo, grid_layout=grid_layout, colorbar=colorbar, title_label=title_label)
+		combo.currentIndexChanged.connect(self._on_multistep_panel_combo_changed)
+		return card, panel
+
+	def _build_multistep_tab(self) -> QWidget:
+		"""3 side-by-side property heatmaps with a shared timestep scrubber —
+		lets the user compare e.g. Pressure / Sw / Sg evolving step by step.
+		"""
+		card = QFrame()
+		card.setObjectName("resultCard")
+		vlay = QVBoxLayout(card)
+		vlay.setContentsMargins(12, 10, 12, 10)
+		vlay.setSpacing(8)
+
+		header = QLabel("PERBANDINGAN ANTAR TIMESTEP")
+		header.setObjectName("resultCardTitle")
+		vlay.addLayout(_title_row(header, "T", "#0F5C8E"))
+
+		playback = QHBoxLayout()
+		playback.setContentsMargins(0, 0, 0, 0)
+		playback.setSpacing(8)
+
+		self.cmp_prev_btn = QPushButton("‹")
+		self.cmp_prev_btn.setObjectName("resultToolbarBtn")
+		self.cmp_prev_btn.setFixedWidth(32)
+		self.cmp_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+		self.cmp_prev_btn.setToolTip("Step sebelumnya")
+		self.cmp_prev_btn.clicked.connect(lambda: self._multistep_step_to("prev"))
+		playback.addWidget(self.cmp_prev_btn)
+
+		self.cmp_play_btn = QPushButton("▶")
+		self.cmp_play_btn.setObjectName("resultToolbarBtn")
+		self.cmp_play_btn.setFixedWidth(32)
+		self.cmp_play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+		self.cmp_play_btn.setToolTip("Putar otomatis per timestep")
+		self.cmp_play_btn.clicked.connect(self._multistep_play_toggle)
+		playback.addWidget(self.cmp_play_btn)
+
+		self.cmp_next_btn = QPushButton("›")
+		self.cmp_next_btn.setObjectName("resultToolbarBtn")
+		self.cmp_next_btn.setFixedWidth(32)
+		self.cmp_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+		self.cmp_next_btn.setToolTip("Step berikutnya")
+		self.cmp_next_btn.clicked.connect(lambda: self._multistep_step_to("next"))
+		playback.addWidget(self.cmp_next_btn)
+
+		self.cmp_step_slider = QSlider(Qt.Orientation.Horizontal)
+		self.cmp_step_slider.setObjectName("resultStepSlider")
+		self.cmp_step_slider.setRange(0, 0)
+		self.cmp_step_slider.valueChanged.connect(self._on_multistep_slider_changed)
+		playback.addWidget(self.cmp_step_slider, 1)
+
+		self.cmp_step_label = QLabel("Jalankan simulasi dulu.")
+		self.cmp_step_label.setObjectName("resultToolbarLabel")
+		self.cmp_step_label.setMinimumWidth(170)
+		playback.addWidget(self.cmp_step_label)
+
+		vlay.addLayout(playback)
+
+		panels_row = QHBoxLayout()
+		panels_row.setContentsMargins(0, 0, 0, 0)
+		panels_row.setSpacing(10)
+
+		self._multistep_panels = []
+		default_indices = [0, 2, 3]  # pressure_psia, sw, sg in self._properties_meta
+		for default_idx in default_indices:
+			panel_card, panel = self._build_multistep_panel(default_idx)
+			panels_row.addWidget(panel_card, 1)
+			self._multistep_panels.append(panel)
+
+		vlay.addLayout(panels_row, 1)
+		return card
+
+	def _refresh_multistep_tab(self) -> None:
+		if self._run_result is None or not self._run_result.steps:
+			self._multistep_stop_playback()
+			self.cmp_step_slider.blockSignals(True)
+			self.cmp_step_slider.setRange(0, 0)
+			self.cmp_step_slider.setValue(0)
+			self.cmp_step_slider.blockSignals(False)
+			self.cmp_step_slider.setEnabled(False)
+			self.cmp_play_btn.setEnabled(False)
+			self.cmp_prev_btn.setEnabled(False)
+			self.cmp_next_btn.setEnabled(False)
+			self.cmp_step_label.setText("Jalankan simulasi dulu.")
+			for panel in self._multistep_panels:
+				self._clear_grid_layout(panel.grid_layout, panel.cell_widgets)
+			self._multistep_global_ranges = {}
+			return
+
+		n_steps = len(self._run_result.steps)
+		has_multiple = n_steps > 1
+		self.cmp_step_slider.setEnabled(has_multiple)
+		self.cmp_play_btn.setEnabled(has_multiple)
+		self.cmp_prev_btn.setEnabled(has_multiple)
+		self.cmp_next_btn.setEnabled(has_multiple)
+
+		current = self.cmp_step_slider.value()
+		new_idx = current if 0 <= current < n_steps else n_steps - 1
+		self.cmp_step_slider.blockSignals(True)
+		self.cmp_step_slider.setRange(0, n_steps - 1)
+		self.cmp_step_slider.setValue(new_idx)
+		self.cmp_step_slider.blockSignals(False)
+
+		self._multistep_global_ranges = self._compute_multistep_global_ranges()
+		self._populate_multistep_panels(new_idx)
+
+	def _compute_multistep_global_ranges(self) -> dict[str, tuple[float, float]]:
+		"""Fixed vmin/vmax per property across ALL saved timesteps.
+
+		Computed once (when the run result changes) rather than per slider
+		tick, and used as a fixed color scale for the Per Waktu tab so
+		scrubbing through time shows a real color trend instead of every
+		frame independently re-stretching its own narrow value spread to
+		the full colormap (which made small, near-constant differences look
+		like one extreme outlier cell next to a flat sea of gray).
+		"""
+		ranges: dict[str, tuple[float, float]] = {}
+		if self._run_result is None or self.project_config is None:
+			return ranges
+		prop_keys = [key for key, _, _ in self._properties_meta]
+		for step in self._run_result.steps:
+			cell_props_list = get_all_cell_properties(self.project_config, step)
+			for prop_key in prop_keys:
+				vals = [c[prop_key] for c in cell_props_list]
+				lo, hi = min(vals), max(vals)
+				prev = ranges.get(prop_key)
+				ranges[prop_key] = (min(prev[0], lo), max(prev[1], hi)) if prev else (lo, hi)
+		return ranges
+
+	def _populate_multistep_panels(self, step_idx: int) -> None:
+		if self._run_result is None or self.project_config is None or not self._run_result.steps:
+			return
+		step_idx = max(0, min(step_idx, len(self._run_result.steps) - 1))
+		step = self._run_result.steps[step_idx]
+		self.cmp_step_label.setText(
+			f"Step {step_idx + 1}/{len(self._run_result.steps)}  ·  t = {step.summary.time_days:.2f} d"
+		)
+
+		cell_props_list = get_all_cell_properties(self.project_config, step)
 		n_cells = len(cell_props_list)
-		cell_w = 120 if n_cells <= 16 else (80 if n_cells <= 100 else 55)
-		cell_h = 100 if n_cells <= 16 else (70 if n_cells <= 100 else 50)
+		cell_size = (70, 56) if n_cells <= 16 else ((48, 40) if n_cells <= 100 else (30, 26))
 
-		for cell_data in cell_props_list:
-			cell_no = cell_data["cell"]
-			i_val = cell_data["i_index"]
-			j_val = cell_data["j_index"]
-			val = cell_data[prop_key]
+		for panel in self._multistep_panels:
+			prop_key, cmap = panel.combo.currentData()
+			label = panel.combo.currentText()
+			panel.title_label.setText(label)
+			self._populate_heatmap_grid(
+				cell_props_list, panel.grid_layout, panel.cell_widgets,
+				prop_key, cmap, panel.colorbar, label, cell_size=cell_size,
+				value_range=self._multistep_global_ranges.get(prop_key),
+			)
 
-			bg_color, fg_color = get_color_from_colormap(val, vmin, vmax, prop_cmap)
+	def _on_multistep_slider_changed(self, value: int) -> None:
+		self._populate_multistep_panels(value)
 
-			cell_widget = _HeatmapCellWidget(cell_no)
-			cell_widget.update_cell(val, bg_color, fg_color, fmt_str, cell_w, cell_h)
+	def _on_multistep_panel_combo_changed(self) -> None:
+		self._populate_multistep_panels(self.cmp_step_slider.value())
 
-			self._prop_cell_widgets[cell_no] = cell_widget
-			self.prop_grid_layout.addWidget(cell_widget, j_val, i_val)
+	def _multistep_step_to(self, target: str) -> None:
+		if self._run_result is None or not self._run_result.steps:
+			return
+		n_steps = len(self._run_result.steps)
+		cur = self.cmp_step_slider.value()
+		new_val = max(0, cur - 1) if target == "prev" else min(n_steps - 1, cur + 1)
+		self.cmp_step_slider.setValue(new_val)
+
+	def _multistep_play_toggle(self) -> None:
+		if self._multistep_timer.isActive():
+			self._multistep_stop_playback()
+			return
+		if self._run_result is None or len(self._run_result.steps) <= 1:
+			return
+		self.cmp_play_btn.setText("⏸")
+		self._multistep_timer.start()
+
+	def _multistep_stop_playback(self) -> None:
+		self._multistep_timer.stop()
+		self.cmp_play_btn.setText("▶")
+
+	def _multistep_timer_tick(self) -> None:
+		if self._run_result is None or not self._run_result.steps:
+			self._multistep_stop_playback()
+			return
+		n_steps = len(self._run_result.steps)
+		next_idx = self.cmp_step_slider.value() + 1
+		if next_idx >= n_steps:
+			next_idx = 0
+		self.cmp_step_slider.setValue(next_idx)

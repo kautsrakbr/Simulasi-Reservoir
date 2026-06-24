@@ -88,6 +88,7 @@ class _Connectivity3DWidget(QWidget):
 		self._throttle_timer.setInterval(14)  # ~70fps cap
 		self._throttle_timer.setSingleShot(True)
 		self._throttle_timer.timeout.connect(self._flush_update)
+		self._saved_splitter_sizes: list[int] | None = None
 		self.setMinimumSize(300, 260)
 		self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -781,7 +782,7 @@ class Connectivity3DPage(QWidget):
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
 		if self._detail_mode != "connections":
-			self.right_panel.setMinimumWidth(320)
+			self.right_panel.setMinimumWidth(280)
 			self.right_panel.setMaximumWidth(16777215)
 
 		# Right Header (Symmetrical to Left Toolbar)
@@ -830,7 +831,7 @@ class Connectivity3DPage(QWidget):
 		if self._show_bottom_controls:
 			bottom_controls = QWidget()
 			bottom_controls.setObjectName("bottomPanel")
-			bottom_controls.setMinimumHeight(118)
+			bottom_controls.setMinimumHeight(104)
 			bottom_controls.setStyleSheet("""
 				QWidget#bottomPanel {
 					background-color: #ffffff;
@@ -847,7 +848,7 @@ class Connectivity3DPage(QWidget):
 
 			bottom_layout = QVBoxLayout(bottom_controls)
 			bottom_layout.setContentsMargins(16, 12, 16, 12)
-			bottom_layout.setSpacing(6)
+			bottom_layout.setSpacing(8)
 
 			header_row = QHBoxLayout()
 			header_row.setSpacing(8)
@@ -857,7 +858,8 @@ class Connectivity3DPage(QWidget):
 			header_row.addStretch(1)
 			self._connectivity_status_chip = QLabel("")
 			self._connectivity_status_chip.setObjectName("pageStatusChip")
-			header_row.addWidget(self._connectivity_status_chip)
+			self._connectivity_status_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+			self._connectivity_status_chip.setMinimumHeight(32)
 			bottom_layout.addLayout(header_row)
 
 			seg_widget = QWidget()
@@ -910,14 +912,26 @@ class Connectivity3DPage(QWidget):
 			for btn in (self.btn_5p, self.btn_9p, self.btn_11p):
 				btn.setStyleSheet(large_btn_style)
 
-			seg_row = QHBoxLayout()
-			seg_row.setSpacing(10)
-			seg_row.addWidget(seg_widget, 1)
+			actions_widget = QWidget()
+			actions_widget.setFixedWidth(190)
+			actions_col = QVBoxLayout(actions_widget)
+			actions_col.setContentsMargins(0, 0, 0, 0)
+			actions_col.setSpacing(8)
+			self._connectivity_status_chip.setFixedWidth(190)
+			actions_col.addWidget(self._connectivity_status_chip)
 			self.btn_save_connectivity = QPushButton("Simpan")
 			self.btn_save_connectivity.setObjectName("constraintSaveButton")
-			self.btn_save_connectivity.setMinimumSize(118, 46)
+			self.btn_save_connectivity.setMinimumSize(120, 40)
+			self.btn_save_connectivity.setMaximumWidth(144)
 			self.btn_save_connectivity.setCursor(Qt.CursorShape.PointingHandCursor)
-			seg_row.addWidget(self.btn_save_connectivity)
+			self.btn_save_connectivity.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+			actions_col.addWidget(self.btn_save_connectivity)
+			actions_col.addStretch(1)
+
+			seg_row = QHBoxLayout()
+			seg_row.setSpacing(14)
+			seg_row.addWidget(seg_widget, 1)
+			seg_row.addWidget(actions_widget)
 			bottom_layout.addLayout(seg_row)
 
 			self.btn_5p.clicked.connect(lambda: self._set_connectivity_draft(5))
@@ -929,6 +943,7 @@ class Connectivity3DPage(QWidget):
 
 		self.splitter.addWidget(left_panel)
 		self.splitter.addWidget(self.right_panel)
+		self.splitter.splitterMoved.connect(self._remember_splitter_sizes)
 		
 		# Set initial sizes
 		self.splitter.setStretchFactor(0, 1)
@@ -1050,13 +1065,27 @@ class Connectivity3DPage(QWidget):
 			self._refresh_connectivity_chip()
 
 		self._refresh_view()
+		QTimer.singleShot(0, self._restore_splitter_sizes)
 
 	def _set_connectivity_draft(self, points: int) -> None:
 		self._connectivity_draft = points
 		self._refresh_connectivity_chip()
 
 	def _save_connectivity(self) -> None:
+		self._remember_splitter_sizes()
 		self.connectivityChanged.emit(self._connectivity_draft)
+
+	def _remember_splitter_sizes(self, *_args) -> None:
+		if hasattr(self, "splitter"):
+			sizes = self.splitter.sizes()
+			if len(sizes) == 2 and sum(sizes) > 0:
+				self._saved_splitter_sizes = list(sizes)
+
+	def _restore_splitter_sizes(self) -> None:
+		sizes = getattr(self, "_saved_splitter_sizes", None)
+		if not sizes or len(sizes) != 2:
+			return
+		self.splitter.setSizes(sizes)
 
 	def _refresh_connectivity_chip(self) -> None:
 		saved = getattr(self.project_config.grid_spec, "connectivity", 5) if self.project_config else 5
@@ -1315,23 +1344,6 @@ class Connectivity3DPage(QWidget):
 			layout.addWidget(subtitle_label)
 		return card, layout
 
-	def _make_stat_chip(self, label: str, value: str, *, tone: str = "neutral") -> QFrame:
-		chip = QFrame()
-		chip.setObjectName("diagnosticStatChip")
-		chip.setProperty("tone", tone)
-		chip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-		lay = QVBoxLayout(chip)
-		lay.setContentsMargins(10, 9, 10, 9)
-		lay.setSpacing(2)
-		label_widget = QLabel(label)
-		label_widget.setObjectName("diagnosticStatLabel")
-		value_widget = QLabel(value)
-		value_widget.setObjectName("diagnosticStatValue")
-		value_widget.setWordWrap(True)
-		lay.addWidget(label_widget)
-		lay.addWidget(value_widget)
-		return chip
-
 	def _add_detail_rows(self, parent_layout: QVBoxLayout, rows: list[tuple[str, str]]) -> None:
 		grid = QGridLayout()
 		grid.setContentsMargins(0, 0, 0, 0)
@@ -1346,19 +1358,6 @@ class Connectivity3DPage(QWidget):
 			grid.addWidget(k_lbl, row, 0)
 			grid.addWidget(v_lbl, row, 1)
 		parent_layout.addLayout(grid)
-
-	def _add_metric_group(self, parent_layout: QVBoxLayout, title: str, rows: list[tuple[str, str]]) -> None:
-		group = QFrame()
-		group.setObjectName("diagnosticMetricGroup")
-		group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-		group_layout = QVBoxLayout(group)
-		group_layout.setContentsMargins(12, 12, 12, 12)
-		group_layout.setSpacing(10)
-		title_label = QLabel(title)
-		title_label.setObjectName("diagnosticBlockTitle")
-		group_layout.addWidget(title_label)
-		self._add_detail_rows(group_layout, rows)
-		parent_layout.addWidget(group)
 
 	def _make_balance_table(
 		self,
@@ -1392,7 +1391,7 @@ class Connectivity3DPage(QWidget):
 			row.setProperty("total", phase.lower() == "total")
 			row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 			row_lay = QGridLayout(row)
-			row_lay.setContentsMargins(12, 9, 12, 9)
+			row_lay.setContentsMargins(12, 7, 12, 7)
 			row_lay.setHorizontalSpacing(12)
 			row_lay.setVerticalSpacing(0)
 			row_lay.setColumnStretch(0, 2)
@@ -1404,7 +1403,7 @@ class Connectivity3DPage(QWidget):
 			row_lay.addWidget(phase_lbl, 0, 0)
 
 			for col, value in enumerate((net_flux, accumulation, residual), 1):
-				val_lbl = QLabel(self._format_num(value, 6))
+				val_lbl = QLabel(self._format_num(value, 2))
 				val_lbl.setObjectName("diagnosticBalanceValue")
 				val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 				row_lay.addWidget(val_lbl, 0, col)
@@ -1418,42 +1417,22 @@ class Connectivity3DPage(QWidget):
 
 		return card
 
-	def _make_phase_balance_card(
+	def _make_phase_matrix(
 		self,
-		phase: str,
-		net_flux: float,
-		accumulation: float,
-		residual: float,
-	) -> QFrame:
-		card = QFrame()
-		card.setObjectName("diagnosticPhaseBalanceCard")
-		card.setProperty("phase", phase.lower())
-		layout = QVBoxLayout(card)
-		layout.setContentsMargins(12, 10, 12, 10)
-		layout.setSpacing(8)
-
-		title = QLabel(phase)
-		title.setObjectName("diagnosticPhaseTitle")
-		layout.addWidget(title)
-
-		self._add_detail_rows(layout, [
-			("Net Flux", self._format_num(net_flux, 6)),
-			("Accumulation", self._format_num(accumulation, 6)),
-			("Residual", self._format_num(residual, 6)),
-		])
-		return card
-
-	def _make_phase_matrix(self, rows: list[tuple[str, tuple[float, float, float, float]]]) -> QWidget:
+		headers: list[str],
+		rows: list[tuple[str, tuple[float, ...]]],
+		digits: int = 4,
+	) -> QWidget:
 		w = QWidget()
 		grid = QGridLayout(w)
 		grid.setContentsMargins(0, 0, 0, 0)
 		grid.setHorizontalSpacing(8)
-		grid.setVerticalSpacing(8)
-		corner = QLabel("Metric")
+		grid.setVerticalSpacing(6)
+		corner = QLabel("")
 		corner.setObjectName("diagnosticMatrixCorner")
 		grid.addWidget(corner, 0, 0)
-		for col, phase in enumerate(("Oil", "Water", "Gas", "Total"), 1):
-			h = QLabel(phase)
+		for col, header in enumerate(headers, 1):
+			h = QLabel(header)
 			h.setObjectName("diagnosticMatrixHeader")
 			h.setAlignment(Qt.AlignmentFlag.AlignCenter)
 			grid.addWidget(h, 0, col)
@@ -1462,11 +1441,30 @@ class Connectivity3DPage(QWidget):
 			row_label.setObjectName("diagnosticMatrixRowLabel")
 			grid.addWidget(row_label, row_idx, 0)
 			for col_idx, value in enumerate(values, 1):
-				cell = QLabel(self._format_num(value, 6))
+				cell = QLabel(self._format_num(value, digits))
 				cell.setObjectName("diagnosticMatrixValue")
 				cell.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 				grid.addWidget(cell, row_idx, col_idx)
 		return w
+
+	def _make_stat_chip(self, title: str, value: str) -> QFrame:
+		"""Compact title+value card -- same visual language as the Summary
+		tab's resultStatCard, reused here so Pore Volume reads as a clean
+		stat instead of a plain label/value list."""
+		card = QFrame()
+		card.setObjectName("resultStatCard")
+		card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+		lay = QVBoxLayout(card)
+		lay.setContentsMargins(10, 8, 10, 8)
+		lay.setSpacing(3)
+		title_lbl = QLabel(title)
+		title_lbl.setObjectName("resultStatTitle")
+		value_lbl = QLabel(value)
+		value_lbl.setObjectName("resultStatValue")
+		value_lbl.setWordWrap(True)
+		lay.addWidget(title_lbl)
+		lay.addWidget(value_lbl)
+		return card
 
 	def _add_metric_grid(self, parent_layout: QVBoxLayout, rows: list[tuple[str, str]]) -> None:
 		grid = QGridLayout()
@@ -1612,46 +1610,57 @@ class Connectivity3DPage(QWidget):
 		status_lbl.setObjectName("diagnosticSubtleText")
 		status_lbl.setWordWrap(True)
 		overview_lay.addWidget(status_lbl)
-		pressure_card = self._make_stat_chip("Pressure", f"{self._format_num(curr_props['pressure_psia'], 2)} psia", tone="primary")
-		overview_lay.addWidget(pressure_card)
-		sat_card = self._make_stat_chip(
-			"Saturations",
-			f"Sw {self._format_num(curr_props['sw'], 3)}   |   Sg {self._format_num(curr_props['sg'], 3)}   |   So {self._format_num(curr_props['so'], 3)}",
-		)
-		overview_lay.addWidget(sat_card)
 		self._add_detail_rows(overview_lay, [
+			("Pressure", f"{self._format_num(curr_props['pressure_psia'], 2)} psia"),
+			("Saturations", f"Sw {self._format_num(curr_props['sw'], 3)} | Sg {self._format_num(curr_props['sg'], 3)} | So {self._format_num(curr_props['so'], 3)}"),
 			("Previous pressure", f"{self._format_num(prev_props['pressure_psia'], 2)} psia"),
 			("Timestep", f"{self._format_num(dt_days, 4)} hari"),
 			("Newton iterations", str(step_result.summary.newton_iterations if step_result else 0)),
 		])
 		cards.append(overview_card)
 
-		balance_card, balance_lay = self._make_diag_section(
-			"Flow Balance",
-			None,
-		)
-		for phase, net_flux, accumulation, residual in [
+		balance_card, balance_lay = self._make_diag_section("Flow Balance")
+		balance_lay.addWidget(self._make_balance_table([
 			("Oil", net_flux_o, acc_o, residual_oil),
 			("Water", net_flux_w, acc_w, residual_water),
 			("Gas", net_flux_g, acc_g, residual_gas),
 			("Total", net_flux_t, acc_t, residual_total),
-		]:
-			balance_lay.addWidget(self._make_phase_balance_card(phase, net_flux, accumulation, residual))
+		]))
 		cards.append(balance_card)
 
 		state_card, state_lay = self._make_diag_section("Reservoir State")
-		self._add_metric_group(state_lay, "Pore Volume", [
-			("Current", self._format_num(pv_k, 4)),
-			("Previous", self._format_num(pv_n, 4)),
-			("Delta", self._format_num(pv_k - pv_n, 4)),
-			("Rock compressibility", self._format_num(self.project_config.reference_data.rock_compressibility, 8)),
-		])
-		self._add_metric_group(state_lay, "PVT and Relperm", [
-			("Bo / Bw / Bg", f"{self._format_num(curr_props['bo'], 4)} / {self._format_num(curr_props['bw'], 4)} / {self._format_num(curr_props['bg'], 6)}"),
-			("mu_o / mu_w / mu_g", f"{self._format_num(curr_props['mu_o'], 4)} / {self._format_num(curr_props['mu_w'], 4)} / {self._format_num(curr_props['mu_g'], 4)}"),
-			("kro / krw / krg", f"{self._format_num(curr_props['kro'], 4)} / {self._format_num(curr_props['krw'], 4)} / {self._format_num(curr_props['krg'], 4)}"),
-			("Pcow / Pcgw", f"{self._format_num(curr_props['pcow'], 4)} / {self._format_num(curr_props['pcgw'], 4)}"),
-		])
+
+		pv_title = QLabel("PORE VOLUME")
+		pv_title.setObjectName("diagnosticBlockTitle")
+		state_lay.addWidget(pv_title)
+		pv_row = QHBoxLayout()
+		pv_row.setContentsMargins(0, 0, 0, 0)
+		pv_row.setSpacing(8)
+		pv_row.addWidget(self._make_stat_chip("SAAT INI", self._format_num(pv_k, 1)))
+		pv_row.addWidget(self._make_stat_chip("SEBELUMNYA", self._format_num(pv_n, 1)))
+		pv_row.addWidget(self._make_stat_chip("DELTA", self._format_num(pv_k - pv_n, 2)))
+		state_lay.addLayout(pv_row)
+		rock_compressibility = self.project_config.reference_data.rock_compressibility
+		rock_caption = QLabel(f"Kompresibilitas batuan: {rock_compressibility:.2e} /psi")
+		rock_caption.setObjectName("diagnosticSubtleText")
+		state_lay.addWidget(rock_caption)
+
+		pvt_title = QLabel("PVT & RELPERM")
+		pvt_title.setObjectName("diagnosticBlockTitle")
+		state_lay.addWidget(pvt_title)
+		state_lay.addWidget(self._make_phase_matrix(
+			["Oil", "Water", "Gas"],
+			[
+				("FVF", (curr_props["bo"], curr_props["bw"], curr_props["bg"])),
+				("Viskositas (cp)", (curr_props["mu_o"], curr_props["mu_w"], curr_props["mu_g"])),
+				("Relperm", (curr_props["kro"], curr_props["krw"], curr_props["krg"])),
+			],
+		))
+		pc_caption = QLabel(
+			f"Pc oil-water: {curr_props['pcow']:.3f} psi   ·   Pc gas-water: {curr_props['pcgw']:.3f} psi"
+		)
+		pc_caption.setObjectName("diagnosticSubtleText")
+		state_lay.addWidget(pc_caption)
 		cards.append(state_card)
 
 		for idx, card in enumerate(cards):

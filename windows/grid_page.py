@@ -12,10 +12,9 @@ from PySide6.QtWidgets import (
 )
 
 from engine.domain.project import ProjectConfig
-from windows.ui_kit import make_card, make_hero_banner
+from windows.ui_kit import make_card
 
 _AXIS_COLOR = {"X": "#0C4A73", "Y": "#0F5C8E", "Z": "#2563A6"}
-_AXIS_TINT = {"X": "#DCEAF7", "Y": "#DCEAF7", "Z": "#DCEAF7"}
 
 
 def _axis_row(axis: str, label_text: str, spin: QWidget, suffix: str = "") -> QWidget:
@@ -23,22 +22,20 @@ def _axis_row(axis: str, label_text: str, spin: QWidget, suffix: str = "") -> QW
 	row.setStyleSheet("background: transparent;")
 	lay = QHBoxLayout(row)
 	lay.setContentsMargins(0, 0, 0, 0)
-	lay.setSpacing(10)
+	lay.setSpacing(12)
 
 	color = _AXIS_COLOR[axis]
-	tint = _AXIS_TINT[axis]
-	badge = QLabel(axis)
-	badge.setFixedSize(26, 26)
-	badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-	badge.setStyleSheet(
-		f"background-color: {tint}; color: {color}; border: 1.5px solid {color};"
-		"border-radius: 13px; font-size: 9pt; font-weight: 800;"
+	axis_lbl = QLabel(axis)
+	axis_lbl.setFixedWidth(12)
+	axis_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+	axis_lbl.setStyleSheet(
+		f"font-size: 8.5pt; font-weight: 800; color: {color}; background: transparent;"
 	)
-	lay.addWidget(badge)
+	lay.addWidget(axis_lbl)
 
 	lbl = QLabel(label_text)
-	lbl.setFixedWidth(120)
-	lbl.setStyleSheet("font-size: 9pt; font-weight: 600; color: #5B6676;")
+	lbl.setFixedWidth(138)
+	lbl.setStyleSheet("font-size: 9pt; font-weight: 600; color: #4F5D73;")
 	lay.addWidget(lbl)
 
 	spin.setMinimumHeight(32)
@@ -46,10 +43,51 @@ def _axis_row(axis: str, label_text: str, spin: QWidget, suffix: str = "") -> QW
 
 	if suffix:
 		suf = QLabel(suffix)
-		suf.setStyleSheet("font-size: 8.5pt; color: #93A1B2; font-weight: 700;")
+		suf.setStyleSheet(f"font-size: 8.5pt; color: {color}; font-weight: 700;")
 		lay.addWidget(suf)
 
 	return row
+
+
+def _summary_block(tag: str, note_text: str) -> tuple[QFrame, QLabel]:
+	card = QFrame()
+	card.setObjectName("gridSummaryCard")
+	card.setStyleSheet("""
+		QFrame#gridSummaryCard {
+			background-color: #FFFFFF;
+			border: 1px solid #D7DEE7;
+			border-radius: 10px;
+		}
+		QFrame#gridSummaryCard QLabel {
+			background: transparent;
+		}
+	""")
+	card.setMinimumHeight(122)
+	card.setMaximumHeight(136)
+	lay = QVBoxLayout(card)
+	lay.setContentsMargins(20, 14, 20, 14)
+	lay.setSpacing(3)
+	accent = QFrame()
+	accent.setFixedHeight(3)
+	accent.setStyleSheet("background:#DCEAF7; border:none; border-radius:1px;")
+	lay.addWidget(accent)
+	tag_lbl = QLabel(tag)
+	tag_lbl.setStyleSheet(
+		"font-size: 7.5pt; font-weight: 700; color: #5B6676;"
+		"letter-spacing: 1.2px;"
+	)
+	val_lbl = QLabel("-")
+	val_lbl.setStyleSheet(
+		"font-size: 16pt; font-weight: 700; color: #0F5C8E;"
+	)
+	note_lbl = QLabel(note_text)
+	note_lbl.setWordWrap(True)
+	note_lbl.setStyleSheet("font-size: 8pt; color: #93A1B2;")
+	lay.addWidget(tag_lbl)
+	lay.addWidget(val_lbl)
+	lay.addWidget(note_lbl)
+	lay.addStretch(1)
+	return card, val_lbl
 
 
 class GridPage(QWidget):
@@ -76,16 +114,19 @@ class GridPage(QWidget):
 		outer.addWidget(sep)
 
 		# ── Hero stat banner ────────────────────────────────────────────
-		self._summary_card, (self._stat_cells, self._stat_dims) = make_hero_banner(
-			["TOTAL SEL", "DIMENSI TOTAL"]
-		)
-		outer.addWidget(self._summary_card)
+		summary_row = QHBoxLayout()
+		summary_row.setSpacing(14)
+		card_cells, self._stat_cells = _summary_block("TOTAL SEL", "Konfigurasi jumlah cell pada sumbu X, Y, dan Z.")
+		card_dims_total, self._stat_dims = _summary_block("DIMENSI TOTAL", "Panjang total reservoir hasil akumulasi ukuran cell.")
+		summary_row.addWidget(card_cells, 1)
+		summary_row.addWidget(card_dims_total, 1)
+		outer.addLayout(summary_row)
 
 		# ── Two-column input cards ────────────────────────────────────
 		cards_row = QHBoxLayout()
 		cards_row.setSpacing(14)
 
-		card_dims, lay_dims = make_card("N", "#0F5C8E", "Dimensi Grid", "Jumlah cell pada tiap sumbu")
+		card_dims, lay_dims = make_card("N", "#0F5C8E", "Dimensi Grid", "Jumlah cell pada tiap sumbu", show_icon=False)
 		self.nx_input = QSpinBox()
 		self.ny_input = QSpinBox()
 		self.nz_input = QSpinBox()
@@ -97,7 +138,7 @@ class GridPage(QWidget):
 		lay_dims.addStretch(1)
 		cards_row.addWidget(card_dims, 1)
 
-		card_size, lay_size = make_card("L", "#0F5C8E", "Ukuran Cell", "Dimensi fisik tiap cell (ft)")
+		card_size, lay_size = make_card("L", "#0F5C8E", "Ukuran Cell", "Dimensi fisik tiap cell (ft)", show_icon=False)
 		self.dx_input = QDoubleSpinBox()
 		self.dy_input = QDoubleSpinBox()
 		self.dz_input = QDoubleSpinBox()

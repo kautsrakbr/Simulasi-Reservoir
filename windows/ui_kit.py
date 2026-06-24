@@ -18,7 +18,14 @@ from PySide6.QtWidgets import (
 )
 
 
-def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> tuple[QFrame, QVBoxLayout]:
+def make_card(
+	icon_letter: str,
+	icon_color: str,
+	title: str,
+	subtitle: str,
+	*,
+	show_icon: bool = True,
+) -> tuple[QFrame, QVBoxLayout]:
 	"""Build a white card (hairline border, no drop shadow) with a circular
 	icon badge + title/subtitle header.
 
@@ -42,14 +49,15 @@ def make_card(icon_letter: str, icon_color: str, title: str, subtitle: str) -> t
 	header = QHBoxLayout()
 	header.setSpacing(10)
 
-	icon_lbl = QLabel(icon_letter)
-	icon_lbl.setFixedSize(32, 32)
-	icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-	icon_lbl.setStyleSheet(
-		f"background-color: {icon_color}; color: #ffffff; border-radius: 16px;"
-		"font-size: 11pt; font-weight: 700;"
-	)
-	header.addWidget(icon_lbl)
+	if show_icon:
+		icon_lbl = QLabel(icon_letter)
+		icon_lbl.setFixedSize(32, 32)
+		icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+		icon_lbl.setStyleSheet(
+			f"background-color: {icon_color}; color: #ffffff; border-radius: 16px;"
+			"font-size: 11pt; font-weight: 700;"
+		)
+		header.addWidget(icon_lbl)
 
 	title_block = QVBoxLayout()
 	title_block.setSpacing(0)
@@ -155,6 +163,13 @@ def enable_precise_edit(
 		lambda pos, s=spin, lbl=label: _show_field_menu(parent, s, lbl, s.mapToGlobal(pos))
 	)
 	spin.setProperty("flatValue", True)
+	# Hover/focus colors live solely in style.qss's [flatValue="true"] rules —
+	# this widget-level sheet used to also set its own :hover background,
+	# which (since a widget-level sheet always wins over the app sheet)
+	# silently fought with the QLineEdit child's own [flatValue] hover color
+	# below, making the field flash two slightly different tints depending on
+	# whether the frame or the inner line edit caught the hover. One color,
+	# defined once, keeps the hover reading as a single flat highlight.
 	spin.setStyleSheet("""
 		QAbstractSpinBox {
 			background: transparent;
@@ -164,11 +179,6 @@ def enable_precise_edit(
 			font-size: 10pt;
 			font-weight: 700;
 			color: #1F2937;
-		}
-		QAbstractSpinBox:hover,
-		QAbstractSpinBox:focus {
-			background: #F3F6FA;
-			border: 1px solid transparent;
 		}
 		QAbstractSpinBox::up-button,
 		QAbstractSpinBox::down-button {
@@ -182,6 +192,7 @@ def enable_precise_edit(
 	spin.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 	spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 	spin.setCursor(Qt.CursorShape.PointingHandCursor)
+	spin.setToolTip(f"Klik kanan untuk ubah nilai {label}")
 	# The visible text area is actually spin's internal QLineEdit child, which
 	# is what the cursor is over on right-click — wire it directly too instead
 	# of relying on the event bubbling up to the spin box's own policy.
@@ -208,6 +219,7 @@ def enable_precise_edit(
 		# the value through setValue(), which setReadOnly() does not block.
 		line_edit.setReadOnly(True)
 		line_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+		line_edit.setToolTip(f"Klik kanan untuk ubah nilai {label}")
 		blocker = SpinBoxInputBlocker(parent)
 		spin.installEventFilter(blocker)
 		line_edit.installEventFilter(blocker)

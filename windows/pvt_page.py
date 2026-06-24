@@ -126,12 +126,15 @@ class _PVTMultiPlotWidget(QWidget):
 		else:
 			cols = self._column_count(count)
 			rows = (count + cols - 1) // cols
-			height = 36 + rows * 420 + max(0, rows - 1) * 24
+			panel_height = 430 if cols >= 2 else 520
+			height = 36 + rows * panel_height + max(0, rows - 1) * 24
 		self.setMinimumHeight(height)
 		self.updateGeometry()
 
 	def _column_count(self, count: int) -> int:
-		return 2 if count > 1 else 1
+		if count <= 1:
+			return 1
+		return 2 if self.width() >= 1700 else 1
 
 	def paintEvent(self, event) -> None:
 		p = QPainter(self)
@@ -530,8 +533,8 @@ class PVTPage(QWidget):
 		graph_root.addWidget(plot_scroll, 1)
 
 		self.pvt_tabs = QTabWidget()
-		self.pvt_tabs.setObjectName("inputTabs")
-		self.pvt_tabs.tabBar().setObjectName("inputTabBar")
+		self.pvt_tabs.setObjectName("subTabs")
+		self.pvt_tabs.tabBar().setObjectName("subTabBar")
 		self.pvt_tabs.tabBar().setExpanding(False)
 		self.pvt_tabs.setDocumentMode(True)
 		self.pvt_tabs.addTab(table_panel, "  PVT  ")
