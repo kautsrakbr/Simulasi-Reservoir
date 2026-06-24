@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from app.paths import asset_path
 from windows.main_window import MainWindow
 
 def create_application(argv: Sequence[str] | None = None) -> QApplication:
@@ -28,7 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _load_stylesheet(app: QApplication) -> None:
-	stylesheet_path = Path(__file__).resolve().parent.parent / "assets" / "style.qss"
+	stylesheet_path = asset_path("style.qss")
 	if not stylesheet_path.exists():
 		return
 
