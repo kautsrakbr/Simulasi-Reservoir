@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -15,6 +13,7 @@ from PySide6.QtWidgets import (
 	QWidget,
 )
 
+from app.paths import asset_path
 from engine.domain.project import MethodConfig, ProjectConfig
 
 
@@ -22,7 +21,7 @@ _METHOD_COPY = {
 	"newton_raphson": {
 		"title": "Newton-Raphson",
 		"summary": "Full Jacobian update every iteration.",
-		"image": Path(__file__).resolve().parent.parent / "assets" / "images" / "newton-raphson.jpeg",
+		"image": asset_path("images", "newton-raphson.jpeg"),
 		"details": [
 			"Recomputes the Jacobian at each nonlinear iteration, so the step direction stays closely aligned with the current residual surface.",
 			"Best when robustness and convergence quality matter more than per-iteration setup cost.",
@@ -32,7 +31,7 @@ _METHOD_COPY = {
 	"quasi_newton": {
 		"title": "Quasi-Newton",
 		"summary": "Reuses or approximates Jacobian information.",
-		"image": Path(__file__).resolve().parent.parent / "assets" / "images" / "quasi-newton.png",
+		"image": asset_path("images", "quasi-newton.png"),
 		"details": [
 			"Avoids rebuilding the full Jacobian every iteration, reducing assembly cost when the residual surface evolves smoothly.",
 			"Best when iteration speed matters and the current case does not require the full Newton correction every step.",
