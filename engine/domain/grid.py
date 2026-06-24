@@ -10,6 +10,7 @@ class GridSpec:
 	dx: float = 1.0
 	dy: float = 1.0
 	dz: float = 1.0
+	connectivity: int = 5    # 5 | 9 | 11 -- stencil point count; 9/11 not implemented yet, falls back to 5-point
 
 @dataclass(slots=True)
 class CellData:

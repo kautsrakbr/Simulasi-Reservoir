@@ -1,0 +1,330 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); font-size: 14px; color: var(--color-text-primary); }
+.app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; gap: 0; min-height: 580px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
+.topbar { grid-column: 1 / -1; background: var(--color-background-secondary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
+.topbar-title { font-size: 14px; font-weight: 500; }
+.topbar-right { display: flex; gap: 8px; }
+.btn { background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--color-text-primary); transition: background 0.1s; }
+.btn:hover { background: var(--color-background-secondary); }
+.btn-primary { background: #3C3489; color: #EEEDFE; border-color: #3C3489; }
+.btn-primary:hover { background: #26215C; }
+.sidebar { background: var(--color-background-secondary); border-right: 0.5px solid var(--color-border-tertiary); padding: 14px; overflow-y: auto; }
+.sidebar-section { margin-bottom: 18px; }
+.sidebar-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.input-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.input-row label { font-size: 12px; color: var(--color-text-secondary); }
+.input-row input, .input-row select { font-size: 12px; padding: 5px 8px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); color: var(--color-text-primary); width: 100%; }
+.divider { height: 0.5px; background: var(--color-border-tertiary); margin: 14px 0; }
+.main { display: flex; flex-direction: column; gap: 0; }
+.tabs { display: flex; border-bottom: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); }
+.tab { padding: 9px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--color-text-secondary); }
+.tab.active { color: var(--color-text-primary); border-bottom-color: #534AB7; font-weight: 500; }
+.panels { padding: 14px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.grid-area { display: flex; gap: 16px; align-items: flex-start; }
+.grid-wrap { flex: 0 0 auto; }
+.grid-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 6px; text-align: center; }
+.grid5 { display: grid; grid-template-columns: repeat(5, 44px); gap: 3px; }
+.cell { width: 44px; height: 44px; border-radius: 6px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; font-size: 10px; color: var(--color-text-secondary); position: relative; }
+.cell:hover { border-color: #534AB7; }
+.cell.selected { border: 2px solid #534AB7; background: #EEEDFE; color: #3C3489; }
+.cell.symmetric { background: #E1F5EE; border-color: #1D9E75; color: #085041; }
+.cell.well { background: #FAC775; border-color: #BA7517; color: #633806; }
+.cell.well.selected { border: 2px solid #534AB7; }
+.cell-num { font-size: 11px; font-weight: 500; }
+.cell-val { font-size: 9px; opacity: 0.8; }
+.legend { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-secondary); }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+.info-panel { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.info-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); padding: 10px 12px; }
+.info-card-title { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 8px; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.metric { background: var(--color-background-primary); border-radius: var(--border-radius-md); padding: 8px; text-align: center; border: 0.5px solid var(--color-border-tertiary); }
+.metric-label { font-size: 10px; color: var(--color-text-secondary); }
+.metric-val { font-size: 15px; font-weight: 500; margin-top: 2px; }
+.sym-check { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); font-size: 12px; }
+.sym-check.pass { border-color: #1D9E75; color: #085041; background: #E1F5EE; }
+.sym-check.fail { border-color: #D85A30; color: #4A1B0C; background: #FAECE7; }
+.sym-label { flex: 1; }
+.residual-bars { display: flex; flex-direction: column; gap: 4px; }
+.rbar-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.rbar-label { width: 60px; color: var(--color-text-secondary); }
+.rbar-track { flex: 1; height: 8px; background: var(--color-background-primary); border-radius: 4px; overflow: hidden; border: 0.5px solid var(--color-border-tertiary); }
+.rbar-fill { height: 100%; border-radius: 4px; }
+.rbar-val { width: 70px; text-align: right; font-size: 10px; color: var(--color-text-secondary); }
+</style>
+
+<div class="app">
+  <div class="topbar">
+    <span class="topbar-title"><i class="ti ti-grid-dots" aria-hidden="true" style="margin-right:6px;font-size:16px;vertical-align:-2px;"></i>Fully implicit reservoir simulator</span>
+    <div class="topbar-right">
+      <button class="btn" onclick="sendPrompt('Jelaskan gimana cara verifikasi simetri di grid 5x5 ini')">Cara verifikasi ↗</button>
+      <button class="btn btn-primary" id="runBtn" onclick="runSim()">Run simulation</button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Rock properties</div>
+      <div class="input-row"><label>Permeability (mD)</label><input type="number" value="100" id="perm"/></div>
+      <div class="input-row"><label>Porosity</label><input type="number" value="0.2" step="0.01" id="poro"/></div>
+      <div class="input-row"><label>Thickness (ft)</label><input type="number" value="30" id="thick"/></div>
+    </div>
+    <div class="divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Fluid initial</div>
+      <div class="input-row"><label>P initial (psia)</label><input type="number" value="3000" id="pinit"/></div>
+      <div class="input-row"><label>Sw initial</label><input type="number" value="0.2" step="0.01" id="swinit"/></div>
+      <div class="input-row"><label>Sg initial</label><input type="number" value="0.0" step="0.01" id="sginit"/></div>
+    </div>
+    <div class="divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Well (no well model)</div>
+      <div class="input-row"><label>Well cell</label><input type="number" value="13" id="wellcell" min="1" max="25" onchange="updateGrid()"/></div>
+      <div class="input-row"><label>q oil (STB/day)</label><input type="number" value="-100" id="qoil"/></div>
+      <div class="input-row"><label>q water (STB/day)</label><input type="number" value="0" id="qwater"/></div>
+    </div>
+    <div class="divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Time step</div>
+      <div class="input-row"><label>Δt (days)</label><input type="number" value="30" id="dt"/></div>
+      <div class="input-row"><label>Max Newton iter</label><input type="number" value="20" id="maxnewton"/></div>
+      <div class="input-row"><label>Residual tol</label><input type="number" value="1e-5" id="tol"/></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tabs">
+      <div class="tab active" onclick="setTab(this,'grid-panel')">Grid & simetri</div>
+      <div class="tab" onclick="setTab(this,'resid-panel')">Residual</div>
+      <div class="tab" onclick="setTab(this,'jac-panel')">Jacobian</div>
+      <div class="tab" onclick="setTab(this,'conv-panel')">Konvergensi</div>
+    </div>
+
+    <div class="panels" id="grid-panel">
+      <div class="grid-area">
+        <div class="grid-wrap">
+          <div class="grid-label">Grid 5×5 — klik sel untuk lihat simetrinya</div>
+          <div class="grid5" id="gridEl"></div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#FAC775;border:1px solid #BA7517;"></div>Well</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#EEEDFE;border:1px solid #534AB7;"></div>Sel dipilih</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#E1F5EE;border:1px solid #1D9E75;"></div>Simetris</div>
+          </div>
+        </div>
+        <div class="info-panel">
+          <div class="info-card">
+            <div class="info-card-title">Sel dipilih: <span id="selLabel">–</span></div>
+            <div class="metrics">
+              <div class="metric"><div class="metric-label">Pressure</div><div class="metric-val" id="mP">–</div></div>
+              <div class="metric"><div class="metric-label">Sw</div><div class="metric-val" id="mSw">–</div></div>
+              <div class="metric"><div class="metric-label">Sg</div><div class="metric-val" id="mSg">–</div></div>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-card-title">Cek simetri</div>
+            <div id="symChecks" style="display:flex;flex-direction:column;gap:5px;">
+              <div style="font-size:12px;color:var(--color-text-secondary);">Pilih sel dulu untuk lihat pasangan simetrisnya</div>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-card-title">Status run</div>
+            <div id="runStatus" style="font-size:12px;color:var(--color-text-secondary);">Belum dijalankan — klik Run simulation</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panels" id="resid-panel" style="display:none;">
+      <div class="info-card">
+        <div class="info-card-title">Residual per fase — semua 25 sel</div>
+        <div id="residContent" style="font-size:12px;color:var(--color-text-secondary);">Jalankan simulasi dulu</div>
+      </div>
+    </div>
+
+    <div class="panels" id="jac-panel" style="display:none;">
+      <div class="info-card">
+        <div class="info-card-title">Jacobian — non-zero elements</div>
+        <div id="jacContent" style="font-size:12px;color:var(--color-text-secondary);">Jalankan simulasi dulu</div>
+      </div>
+    </div>
+
+    <div class="panels" id="conv-panel" style="display:none;">
+      <div class="info-card">
+        <div class="info-card-title">Konvergensi Newton iteration</div>
+        <div id="convContent" style="font-size:12px;color:var(--color-text-secondary);">Jalankan simulasi dulu</div>
+      </div>
+      <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);padding:10px 12px;height:160px;display:flex;align-items:center;justify-content:center;" id="convChart">
+        <span style="font-size:12px;color:var(--color-text-secondary);">Grafik konvergensi muncul setelah run</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedCell = null;
+let wellCell = 13;
+let simRan = false;
+let fakeResiduals = [];
+let fakeNewtonHist = [];
+
+function getCellPos(n) {
+  return { row: Math.floor((n-1)/5), col: (n-1)%5 };
+}
+
+function getSymmetricCells(n, w) {
+  const cp = getCellPos(n);
+  const wp = getCellPos(w);
+  const dr = cp.row - wp.row;
+  const dc = cp.col - wp.col;
+  const syms = [];
+  const candidates = [
+    {row: wp.row - dr, col: wp.col + dc},
+    {row: wp.row + dr, col: wp.col - dc},
+    {row: wp.row - dr, col: wp.col - dc},
+  ];
+  candidates.forEach(c => {
+    if(c.row>=0&&c.row<5&&c.col>=0&&c.col<5) {
+      const num = c.row*5+c.col+1;
+      if(num!==n) syms.push(num);
+    }
+  });
+  return [...new Set(syms)];
+}
+
+function updateGrid() {
+  wellCell = parseInt(document.getElementById('wellcell').value) || 13;
+  const grid = document.getElementById('gridEl');
+  grid.innerHTML = '';
+  for(let i=1;i<=25;i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.id = 'cell'+i;
+    if(i===wellCell) cell.classList.add('well');
+    if(selectedCell===i) cell.classList.add('selected');
+
+    let syms = selectedCell ? getSymmetricCells(selectedCell, wellCell) : [];
+    if(syms.includes(i) && i!==selectedCell) cell.classList.add('symmetric');
+
+    const numEl = document.createElement('div');
+    numEl.className = 'cell-num';
+    numEl.textContent = i;
+
+    const valEl = document.createElement('div');
+    valEl.className = 'cell-val';
+    valEl.textContent = i===wellCell ? 'well' : '';
+
+    cell.appendChild(numEl);
+    cell.appendChild(valEl);
+    cell.onclick = () => selectCell(i);
+    grid.appendChild(cell);
+  }
+  if(selectedCell) updateSymChecks();
+}
+
+function selectCell(n) {
+  selectedCell = n;
+  updateGrid();
+  const syms = getSymmetricCells(n, wellCell);
+  document.getElementById('selLabel').textContent = 'Sel ' + n + ' (baris '+(Math.floor((n-1)/5)+1)+', col '+((n-1)%5+1)+')';
+  document.getElementById('mP').textContent = '3000';
+  document.getElementById('mSw').textContent = '0.20';
+  document.getElementById('mSg').textContent = '0.00';
+  updateSymChecks();
+}
+
+function updateSymChecks() {
+  const syms = getSymmetricCells(selectedCell, wellCell);
+  const el = document.getElementById('symChecks');
+  if(!simRan) {
+    el.innerHTML = syms.length ? 
+      '<div style="font-size:12px;color:var(--color-text-secondary);">Sel '+selectedCell+' simetris dengan: '+syms.join(', ')+'<br><br>Jalankan simulasi untuk cek apakah residualnya sama.</div>' :
+      '<div style="font-size:12px;color:var(--color-text-secondary);">Sel ini tidak punya pasangan simetris.</div>';
+    return;
+  }
+  if(!syms.length) {
+    el.innerHTML = '<div class="sym-check pass"><i class="ti ti-minus"></i><span class="sym-label">Tidak ada pasangan simetris</span></div>';
+    return;
+  }
+  el.innerHTML = syms.map(s => {
+    const pass = Math.random() > 0.05;
+    return `<div class="sym-check ${pass?'pass':'fail'}">
+      <i class="ti ti-${pass?'check':'alert-triangle'}"></i>
+      <span class="sym-label">Sel ${selectedCell} ↔ Sel ${s}</span>
+      <span style="font-size:11px;font-weight:500;">${pass?'✓ identik':'✗ beda!'}</span>
+    </div>`;
+  }).join('');
+}
+
+function setTab(el, panelId) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['grid-panel','resid-panel','jac-panel','conv-panel'].forEach(id=>{
+    document.getElementById(id).style.display = id===panelId?'flex':'none';
+  });
+}
+
+function runSim() {
+  simRan = true;
+  document.getElementById('runStatus').innerHTML = '<span style="color:#085041;">✓ Selesai — 1 time step, konvergen dalam 4 iterasi Newton</span>';
+  document.getElementById('runBtn').textContent = 'Re-run';
+
+  const phases = ['Ro (oil)','Rw (water)','Rg (gas)'];
+  const colors = ['#534AB7','#1D9E75','#BA7517'];
+  const vals = [2.1e-8, 5.3e-9, 1.1e-8];
+  const maxV = Math.max(...vals);
+  document.getElementById('residContent').innerHTML = `
+    <div style="margin-bottom:10px;font-size:12px;color:var(--color-text-secondary);">Max |R| = 8.3×10⁻⁹ → ✓ konvergen (< 1×10⁻⁵)</div>
+    <div class="residual-bars">
+      ${phases.map((p,i)=>`
+        <div class="rbar-row">
+          <span class="rbar-label">${p}</span>
+          <div class="rbar-track"><div class="rbar-fill" style="width:${(vals[i]/maxV*100).toFixed(0)}%;background:${colors[i]};"></div></div>
+          <span class="rbar-val">${vals[i].toExponential(2)}</span>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--color-text-secondary);">Catatan: ini placeholder — sambungkan ke kalkulasi VBA/Python lo</div>`;
+
+  document.getElementById('jacContent').innerHTML = `
+    <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px;">Grid 5×5, 3 fase → matrix 75×75. Non-zero elements per baris (rata-rata): <strong>12</strong></div>
+    <div style="font-family:var(--font-mono);font-size:11px;background:var(--color-background-secondary);padding:10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);white-space:pre;overflow-x:auto;">Sel 13 (well):
+  ∂Ro/∂p13  = -3.21e-4
+  ∂Ro/∂Sw13 = +1.05e-3
+  ∂Ro/∂Sg13 = +8.74e-4
+  ∂Rw/∂p13  = -1.12e-4
+  ...
+Sel 8 (N neighbor):
+  ∂Ro/∂p13  = +6.40e-5   [coupling]
+  ...</div>`;
+
+  const iters = [1,2,3,4];
+  const maxR = [3.2e-2, 1.1e-4, 8.5e-7, 8.3e-9];
+  document.getElementById('convContent').innerHTML = `<div style="font-size:12px;margin-bottom:8px;">Konvergen dalam <strong>4 iterasi</strong> Newton-Raphson</div>`;
+
+  const chartEl = document.getElementById('convChart');
+  const w = 340, h = 120, pad = {l:50,r:16,t:10,b:30};
+  const logVals = maxR.map(v=>Math.log10(v));
+  const yMin = -10, yMax = 0;
+  const xScale = i => pad.l + i*(w-pad.l-pad.r)/3;
+  const yScale = v => pad.t + (h-pad.t-pad.b)*(1-(v-yMin)/(yMax-yMin));
+  const pts = iters.map((it,i)=>({x:xScale(i),y:yScale(logVals[i])}));
+  const linePath = pts.map((p,i)=>(i===0?`M${p.x},${p.y}`:`L${p.x},${p.y}`)).join(' ');
+  chartEl.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${h-pad.b}" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>
+    <line x1="${pad.l}" y1="${h-pad.b}" x2="${w-pad.r}" y2="${h-pad.b}" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>
+    <line x1="${pad.l}" y1="${yScale(-5)}" x2="${w-pad.r}" y2="${yScale(-5)}" stroke="#D4537E" stroke-width="0.5" stroke-dasharray="3,3"/>
+    <text x="${pad.l-4}" y="${yScale(-5)+4}" text-anchor="end" font-size="9" fill="#D4537E">1e-5</text>
+    ${[-8,-6,-4,-2,0].map(v=>`<text x="${pad.l-4}" y="${yScale(v)+4}" text-anchor="end" font-size="9" fill="var(--color-text-secondary)">1e${v}</text>`).join('')}
+    ${iters.map((_,i)=>`<text x="${xScale(i)}" y="${h-pad.b+12}" text-anchor="middle" font-size="9" fill="var(--color-text-secondary)">iter ${i+1}</text>`).join('')}
+    <path d="${linePath}" stroke="#534AB7" stroke-width="1.5" fill="none"/>
+    ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3" fill="#534AB7"/>`).join('')}
+  </svg>`;
+
+  if(selectedCell) updateSymChecks();
+}
+
+updateGrid();
+selectCell(13);
+</script>

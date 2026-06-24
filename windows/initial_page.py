@@ -1,18 +1,153 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import (
+	QDoubleSpinBox,
+	QFormLayout,
+	QFrame,
+	QHBoxLayout,
+	QLabel,
+	QVBoxLayout,
+	QWidget,
+)
+
+from engine.domain.project import ProjectConfig
+from windows.ui_kit import SpinBoxInputBlocker, enable_precise_edit, make_card, make_hero_banner
+
+
+def _form(parent: QWidget | None = None) -> QFormLayout:
+	f = QFormLayout(parent)
+	f.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+	f.setHorizontalSpacing(14)
+	f.setVerticalSpacing(8)
+	f.setContentsMargins(10, 10, 10, 10)
+	return f
 
 
 class InitialPage(QWidget):
+	initialConditionsChanged = Signal(float, float, float, float)
+
 	def __init__(self) -> None:
 		super().__init__()
 
-		layout = QVBoxLayout(self)
-		title = QLabel("Initial Page")
-		description = QLabel(
-			"Halaman ini akan menangani pressure awal, saturasi awal, dan kondisi start time step."
-		)
-		description.setWordWrap(True)
+		outer = QVBoxLayout(self)
+		outer.setSpacing(8)
+		outer.setContentsMargins(14, 14, 14, 14)
 
-		layout.addWidget(title)
-		layout.addWidget(description)
+		# ── Page header ───────────────────────────────────────────────
+		hdr = QHBoxLayout()
+		title = QLabel("Kondisi Awal")
+		title.setObjectName("pageTitle")
+		hdr.addWidget(title)
+		hdr.addStretch()
+		outer.addLayout(hdr)
+
+		sep = QFrame()
+		sep.setFrameShape(QFrame.Shape.HLine)
+		sep.setObjectName("pageDivider")
+		outer.addWidget(sep)
+
+		# ── Hero saturation banner ──────────────────────────────────────
+		hero, (self._hero_sw, self._hero_sg, self._hero_so) = make_hero_banner(
+			["SATURASI AIR (Sw)", "SATURASI GAS (Sg)", "SATURASI MINYAK (So)"]
+		)
+		outer.addWidget(hero)
+
+		# ── Group: Reference & Initial Saturations ────────────────────
+		self._spin_input_blockers: list[SpinBoxInputBlocker] = []
+		card, lay = make_card("R", "#0F5C8E", "Referensi & Saturasi Awal", "Kondisi awal simulasi reservoir")
+		frm = _form()
+		self.initial_pressure_input = QDoubleSpinBox()
+		self.initial_pressure_input.setRange(0.0, 1_000_000.0)
+		self.initial_pressure_input.setDecimals(2)
+		self.initial_pressure_input.setSingleStep(10.0)
+		self.reference_depth_input = QDoubleSpinBox()
+		self.reference_depth_input.setRange(0.0, 100_000.0)
+		self.reference_depth_input.setDecimals(2)
+		self.initial_sw_input = QDoubleSpinBox()
+		self.initial_sw_input.setRange(0.0, 1.0)
+		self.initial_sw_input.setDecimals(4)
+		self.initial_sw_input.setSingleStep(0.01)
+		self.initial_sg_input = QDoubleSpinBox()
+		self.initial_sg_input.setRange(0.0, 1.0)
+		self.initial_sg_input.setDecimals(4)
+		self.initial_sg_input.setSingleStep(0.01)
+
+		# So: styled read-only display
+		self.initial_so_label = QLabel("1.0000")
+		self.initial_so_label.setObjectName("soDisplayChip")
+		self.initial_so_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+		self.initial_so_label.setFixedWidth(90)
+
+		frm.addRow(
+			"Initial Pressure (psi)",
+			enable_precise_edit(self, self.initial_pressure_input, "Initial Pressure (psi)", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Kedalaman Referensi (ft)",
+			enable_precise_edit(self, self.reference_depth_input, "Kedalaman Referensi (ft)", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Saturasi Air Awal  Sw",
+			enable_precise_edit(self, self.initial_sw_input, "Saturasi Air Awal Sw", self._spin_input_blockers),
+		)
+		frm.addRow(
+			"Saturasi Gas Awal  Sg",
+			enable_precise_edit(self, self.initial_sg_input, "Saturasi Gas Awal Sg", self._spin_input_blockers),
+		)
+		frm.addRow("Saturasi Minyak  So  =", self.initial_so_label)
+		lay.addLayout(frm)
+		outer.addWidget(card)
+
+		# ── Description info label ────────────────────────────────────
+		self.description = QLabel()
+		self.description.setWordWrap(True)
+		self.description.setObjectName("pageHintLabel")
+		outer.addWidget(self.description)
+
+		outer.addStretch()
+
+		# ── Wire signals ──────────────────────────────────────────────
+		self.initial_pressure_input.valueChanged.connect(self._emit_change)
+		self.reference_depth_input.valueChanged.connect(self._emit_change)
+		self.initial_sw_input.valueChanged.connect(self._emit_change)
+		self.initial_sg_input.valueChanged.connect(self._emit_change)
+
+	def set_project(self, project_config: ProjectConfig) -> None:
+		blockers = [
+			QSignalBlocker(self.initial_pressure_input),
+			QSignalBlocker(self.reference_depth_input),
+			QSignalBlocker(self.initial_sw_input),
+			QSignalBlocker(self.initial_sg_input),
+		]
+		self.initial_pressure_input.setValue(project_config.reference_data.reference_pressure)
+		self.reference_depth_input.setValue(project_config.initial_conditions.reference_depth)
+		self.initial_sw_input.setValue(project_config.initial_conditions.initial_sw)
+		self.initial_sg_input.setValue(project_config.initial_conditions.initial_sg)
+		self._update_so_label(project_config.initial_conditions.initial_sw, project_config.initial_conditions.initial_sg)
+		del blockers
+		self.description.setText(
+			"Tekanan referensi saat ini: "
+			f"{project_config.reference_data.reference_pressure:.2f} psi. "
+			"Saturasi awal dipakai sebagai kondisi awal simulasi."
+		)
+
+	def _emit_change(self) -> None:
+		sw = self.initial_sw_input.value()
+		sg = self.initial_sg_input.value()
+		self._update_so_label(sw, sg)
+		self.initialConditionsChanged.emit(
+			self.reference_depth_input.value(), sw, sg, self.initial_pressure_input.value()
+		)
+
+	def _update_so_label(self, sw: float, sg: float) -> None:
+		so = max(0.0, 1.0 - sw - sg)
+		self.initial_so_label.setText(f"{so:.4f}")
+		is_valid = (sw + sg) <= 1.0
+		self.initial_so_label.setProperty("soValid", is_valid)
+		self.initial_so_label.style().unpolish(self.initial_so_label)
+		self.initial_so_label.style().polish(self.initial_so_label)
+
+		self._hero_sw.setText(f"{sw:.4f}")
+		self._hero_sg.setText(f"{sg:.4f}")
+		self._hero_so.setText(f"{so:.4f}")

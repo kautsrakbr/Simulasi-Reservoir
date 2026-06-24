@@ -22,11 +22,17 @@ class RunWorker(QObject):
 	def run(self) -> None:
 		self.started.emit()
 		self.progress.emit("Memulai validasi model.")
+
+		def _on_iteration(time_days: float, iteration: int, residual_norm: float, converged: bool) -> None:
+			status = "konvergen" if converged else "lanjut"
+			self.progress.emit(
+				f"  t={time_days:.2f}d  ·  iterasi {iteration}  ·  residual_norm={residual_norm:.3e}  ·  {status}"
+			)
+
 		try:
-			run_result = validate_and_run(self.project_config)
+			run_result = validate_and_run(self.project_config, on_iteration=_on_iteration)
 		except Exception as exc:
 			self.failed.emit(str(exc))
 			return
 
-		self.progress.emit("Run placeholder selesai.")
 		self.finished.emit(run_result)

@@ -8,11 +8,14 @@ from engine.grid.geometry import compute_bulk_volume
 
 def build_grid(project_config: ProjectConfig) -> GridModel:
 	grid_model = GridModel(spec=project_config.grid_spec)
-	grid_model.cells = build_cell_data(project_config.grid_spec)
+	grid_model.cells = build_cell_data(
+		project_config.grid_spec,
+		reference_depth=project_config.reference_data.reference_depth,
+	)
 	return attach_connections(grid_model)
 
 
-def build_cell_data(grid_spec: GridSpec) -> list[CellData]:
+def build_cell_data(grid_spec: GridSpec, reference_depth: float = 0.0) -> list[CellData]:
 	cells: list[CellData] = []
 	cell_id = 0
 	bulk_volume = compute_bulk_volume(grid_spec.dx, grid_spec.dy, grid_spec.dz)
@@ -25,6 +28,11 @@ def build_cell_data(grid_spec: GridSpec) -> list[CellData]:
 						i=i,
 						j=j,
 						k=k,
+						depth=reference_depth + (k + 0.5) * grid_spec.dz,
+						porosity=0.2,
+						perm_x=100.0,
+						perm_y=100.0,
+						perm_z=100.0,
 						bulk_volume=bulk_volume,
 					)
 				)
