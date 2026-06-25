@@ -474,7 +474,7 @@ class PVTPage(QWidget):
 		self.table_preview.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 		self.table_preview.setAlternatingRowColors(True)
 		self.table_preview.verticalHeader().setVisible(False)
-		self.table_preview.setMinimumHeight(360)
+		self.table_preview.setMinimumHeight(220)
 		self.table_preview.setSortingEnabled(True)
 		hh = self.table_preview.horizontalHeader()
 		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)

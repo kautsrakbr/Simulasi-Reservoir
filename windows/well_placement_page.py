@@ -513,7 +513,12 @@ class WellPlacementPage(QWidget):
 
 		# ── Right panel ────────────────────────────────────────────────────────
 		self.right_panel = QWidget()
-		self.right_panel.setStyleSheet("background-color: #F7F9FB;")
+		self.right_panel.setObjectName("rightPanel")
+		# Scoped ID selector (not a bare unscoped declaration) -- an unscoped
+		# "background-color: ..." here leaks down through the QSS cascade and
+		# silently overrides descendant ID-selector rules (e.g. the Simpan
+		# button further down), even though those are more specific.
+		self.right_panel.setStyleSheet("QWidget#rightPanel { background-color: #F7F9FB; }")
 		right_layout = QVBoxLayout(self.right_panel)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		right_layout.setSpacing(0)
